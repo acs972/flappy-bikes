@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Raleway:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -24,39 +24,35 @@
       width: 100%;
       height: 100%;
       margin: 0;
+      padding: 0;
       overflow: hidden;
       background: var(--sea-blue);
     }
 
     body {
-      display: grid;
-      place-items: center;
+      position: relative;
+      height: 100vh;
+      height: 100dvh;
       user-select: none;
       -webkit-user-select: none;
       touch-action: manipulation;
     }
 
-    .game-shell {
-      position: relative;
-      width: min(94vw, 520px);
-      height: min(92vh, 780px);
-      min-height: 460px;
-      border: 7px solid var(--navy-teal);
-      border-radius: 28px;
-      overflow: hidden;
-      background: var(--sea-blue);
-      box-shadow: 0 14px 0 rgba(13, 48, 59, .18), 0 24px 44px rgba(13, 48, 59, .2);
-    }
-
-    canvas { display: block; width: 100%; height: 100%; }
+    canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 
     .hud {
       position: absolute;
-      inset: 15px 18px auto;
+      top: calc(env(safe-area-inset-top, 0px) + 14px);
+      left: 50%;
+      width: min(var(--playfield-width, 100%), calc(100% - 36px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+      padding-left: calc(env(safe-area-inset-left, 0px) + 18px);
+      padding-right: calc(env(safe-area-inset-right, 0px) + 18px);
+      transform: translateX(-50%);
       display: flex;
       justify-content: space-between;
       align-items: center;
       pointer-events: none;
+      z-index: 1;
       color: var(--navy-teal);
       font-weight: 700;
       letter-spacing: .04em;
@@ -83,15 +79,49 @@
     .score, .best-score { font-family: "Poppins", sans-serif; }
     .score { font-size: clamp(22px, 6vw, 34px); }
     .best-score { font-size: clamp(13px, 3.5vw, 17px); }
+    .mute-button {
+      position: absolute;
+      top: 46px;
+      right: calc(env(safe-area-inset-right, 0px) + 18px);
+      display: grid;
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
+      place-items: center;
+      align-self: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #FFFFFF;
+      background: #1A6175;
+      cursor: pointer;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mute-button svg { display: block; width: 22px; height: 22px; }
+    .mute-button svg.hidden { display: none; }
+    .mute-button:focus-visible { outline: 2px solid #0D303B; outline-offset: 2px; }
+
+    @media (max-height: 520px) {
+      .brand-title { font-size: clamp(16px, 2.1vw, 18px); }
+      .brand-byline { font-size: 10px; }
+      .score-wrap { gap: 8px; }
+      .score { font-size: 22px; }
+      .best-score { font-size: 11px; }
+    }
 
     .overlay {
       position: absolute;
       inset: 0;
       display: grid;
       place-items: center;
-      padding: 30px;
+      padding: calc(30px + env(safe-area-inset-top, 0px))
+        calc(30px + env(safe-area-inset-right, 0px))
+        calc(30px + env(safe-area-inset-bottom, 0px))
+        calc(30px + env(safe-area-inset-left, 0px));
       text-align: center;
       background: linear-gradient(rgba(204,227,236,.18), rgba(255,255,255,.45));
+      z-index: 2;
     }
 
     .card {
@@ -126,16 +156,63 @@
       font-weight: 600;
     }
 
+    .share-button {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px 16px;
+      border: 2px solid #1A6175;
+      border-radius: 12px;
+      color: #1A6175;
+      background: #FFFFFF;
+      font-family: "Poppins", sans-serif;
+      font-size: clamp(14px, 3.8vw, 18px);
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .share-button:focus-visible { outline: 2px solid #0D303B; outline-offset: 2px; }
+
     .tip { margin: 18px 0 0; color: var(--teal); font-size: 13px; font-weight: 600; }
     .new-high-score { margin: -8px 0 18px; color: var(--orange); font-family: "Poppins", sans-serif; font-size: 17px; }
     .new-high-score.hidden { display: none; }
-    .tel-aviv-link { margin: 16px 0 0; color: var(--teal); font-size: 12px; font-weight: 600; }
+    .ride-promo { margin: 16px 0 0; color: #0D303B; font-size: 13px; font-weight: 600; }
+    .book-ride-button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      color: #FFFFFF;
+      background: #1A6175;
+      font-family: "Poppins", sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .book-ride-button:focus-visible { outline: 2px solid #0D303B; outline-offset: 2px; }
+
+    @media (max-height: 560px) {
+      #game-over-screen {
+        padding: calc(12px + env(safe-area-inset-top, 0px))
+          calc(18px + env(safe-area-inset-right, 0px))
+          calc(12px + env(safe-area-inset-bottom, 0px))
+          calc(18px + env(safe-area-inset-left, 0px));
+      }
+      #game-over-screen .card { padding: 20px 18px 18px; }
+      #game-over-screen h2 { font-size: clamp(26px, 7vw, 36px); }
+      #game-over-screen .subtitle { margin: 10px 0 14px; font-size: 15px; }
+      #game-over-screen .new-high-score { margin: -4px 0 10px; font-size: 15px; }
+      #game-over-screen .prompt { padding: 9px 12px; font-size: 14px; }
+      #game-over-screen .share-button { margin-top: 8px; padding: 8px 12px; font-size: 14px; }
+      #game-over-screen .tip { margin-top: 10px; font-size: 12px; }
+      #game-over-screen .ride-promo { margin-top: 10px; font-size: 12px; }
+      #game-over-screen .book-ride-button { margin-top: 6px; padding: 8px 12px; font-size: 14px; }
+    }
     .hidden { display: none; }
   </style>
 </head>
 <body>
-  <main class="game-shell" aria-label="Flappy Bikes game">
-    <canvas id="game" aria-label="Game canvas"></canvas>
+  <canvas id="game" aria-label="Flappy Bikes game canvas"></canvas>
     <div class="hud">
       <div class="brand">
         <span class="brand-title">Flappy Bikes</span>
@@ -144,6 +221,16 @@
       <div class="score-wrap">
         <div class="score" id="score">0</div>
         <div class="best-score" id="best-score">Best: 0</div>
+        <button class="mute-button" id="mute-button" type="button" aria-label="Mute sound" aria-pressed="false" title="Mute sound">
+          <svg class="hidden" id="speaker-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+            <path d="M16 9a5 5 0 0 1 0 6m2-8a8 8 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <svg id="muted-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+            <path d="m17 9 5 6m0-6-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -162,17 +249,19 @@
         <p class="subtitle">Score: <span id="final-score">0</span> &nbsp;·&nbsp; Best: <span id="final-best-score">0</span></p>
         <p class="new-high-score hidden" id="new-high-score">New high score!</p>
         <div class="prompt">Press Space or tap to play again</div>
+        <button class="share-button" id="share-button" type="button">Share score</button>
         <p class="tip">One more ride?</p>
-        <p class="tel-aviv-link">Explore Tel Aviv by bike - yallabikestlv.com</p>
+        <div class="ride-promo">
+          <div>Loved the ride? Do it for real in Tel Aviv!</div>
+          <a class="book-ride-button" id="book-ride-button" href="https://yallabikestlv.com" target="_blank" rel="noopener">Book a Yalla Bikes ride 🚲</a>
+        </div>
       </div>
     </section>
-  </main>
-
   <script>
     // Everything lives in this file: drawing, physics, collision detection, and input.
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
-    const shell = document.querySelector('.game-shell');
+    const stage = document.body;
     const scoreEl = document.getElementById('score');
     const bestScoreEl = document.getElementById('best-score');
     const finalScoreEl = document.getElementById('final-score');
@@ -180,10 +269,222 @@
     const newHighScoreEl = document.getElementById('new-high-score');
     const startScreen = document.getElementById('start-screen');
     const gameOverScreen = document.getElementById('game-over-screen');
+    const muteButton = document.getElementById('mute-button');
+    const speakerIcon = document.getElementById('speaker-icon');
+    const mutedIcon = document.getElementById('muted-icon');
+    const shareButton = document.getElementById('share-button');
+    const bookRideButton = document.getElementById('book-ride-button');
 
     // localStorage can be disabled in some browsers, so all access is safely guarded.
     const HIGH_SCORE_KEY = 'flappy-bikes-high-score';
     let bestScore = readHighScore();
+
+    // Audio is optional: storage and Web Audio failures are caught so the game remains playable.
+    const MUTE_STORAGE_KEY = 'flappy-bikes-muted';
+    let muted = readMuteSetting();
+    let audioContext = null;
+    let audioMasterGain = null;
+
+    function readMuteSetting() {
+      try {
+        return localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function saveMuteSetting() {
+      try {
+        localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
+      } catch (error) {
+        // Sound controls still work for this visit when storage is unavailable.
+      }
+    }
+
+    function updateMuteButton() {
+      muteButton.setAttribute('aria-pressed', String(muted));
+      muteButton.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+      muteButton.title = muted ? 'Unmute sound' : 'Mute sound';
+      // The visible icon describes the action available when pressed.
+      speakerIcon.classList.toggle('hidden', !muted);
+      mutedIcon.classList.toggle('hidden', muted);
+    }
+
+    function getAudioContext() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+        if (!audioContext || audioContext.state === 'closed') {
+          const newAudioContext = new AudioContextClass();
+          const newMasterGain = newAudioContext.createGain();
+          newMasterGain.gain.value = muted ? 0 : 1;
+          newMasterGain.connect(newAudioContext.destination);
+          audioContext = newAudioContext;
+          audioMasterGain = newMasterGain;
+        }
+        return audioContext;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    // Called from the first real user gesture to satisfy mobile browser audio policies.
+    function unlockAudio() {
+      const audio = getAudioContext();
+      if (!audio || audio.state === 'running') return;
+      try {
+        const resumePromise = audio.resume();
+        if (resumePromise && typeof resumePromise.catch === 'function') resumePromise.catch(() => {});
+      } catch (error) {
+        // Unsupported or blocked audio simply stays silent.
+      }
+    }
+
+    function playSound(soundName) {
+      if (muted) return;
+      const audio = getAudioContext();
+      if (!audio) return;
+
+      const play = () => {
+        if (muted || audio.state !== 'running') return;
+        try {
+          const now = audio.currentTime;
+          const tone = (frequency, endFrequency, start, duration, volume, wave = 'sine') => {
+            const oscillator = audio.createOscillator();
+            const envelope = audio.createGain();
+            oscillator.type = wave;
+            oscillator.frequency.setValueAtTime(frequency, start);
+            if (endFrequency !== frequency) {
+              oscillator.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
+            }
+            envelope.gain.setValueAtTime(0.0001, start);
+            envelope.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+            envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+            oscillator.connect(envelope);
+            envelope.connect(audioMasterGain || audio.destination);
+            oscillator.start(start);
+            oscillator.stop(start + duration + 0.015);
+          };
+
+          if (soundName === 'hop') {
+            // Two soft bell partials make a cheerful bicycle-bell ding.
+            tone(880, 880, now, 0.22, 0.055);
+            tone(1320, 1320, now + 0.015, 0.14, 0.025);
+          } else if (soundName === 'score') {
+            // A light pair of rising tones marks each point.
+            tone(660, 880, now, 0.13, 0.045);
+            tone(880, 1175, now + 0.045, 0.14, 0.035);
+          } else if (soundName === 'crash') {
+            // A low, rounded pitch drop creates a gentle bonk instead of a harsh crash.
+            tone(175, 95, now, 0.2, 0.065, 'triangle');
+            tone(105, 75, now + 0.01, 0.13, 0.025, 'sine');
+          } else if (soundName === 'new-high-score') {
+            // A short, happy three-note major-key jingle follows the crash sound.
+            const jingleStart = now + 0.18;
+            tone(523, 523, jingleStart, 0.14, 0.045);
+            tone(659, 659, jingleStart + 0.14, 0.14, 0.045);
+            tone(784, 784, jingleStart + 0.28, 0.22, 0.05);
+          }
+        } catch (error) {
+          // A browser audio implementation may fail; ignore it and keep the game running.
+        }
+      };
+
+      if (audio.state === 'running') {
+        play();
+      } else {
+        try {
+          const resumePromise = audio.resume();
+          if (resumePromise && typeof resumePromise.then === 'function') {
+            resumePromise.then(play).catch(() => {});
+          }
+        } catch (error) {
+          // Silent fallback if audio cannot be resumed.
+        }
+      }
+    }
+
+    function toggleMute() {
+      unlockAudio();
+      muted = !muted;
+      if (audioContext && audioMasterGain && audioContext.state !== 'closed') {
+        try {
+          const now = audioContext.currentTime;
+          audioMasterGain.gain.cancelScheduledValues(now);
+          audioMasterGain.gain.setTargetAtTime(muted ? 0 : 1, now, 0.01);
+        } catch (error) {
+          // The mute state still applies to sounds triggered from now on.
+        }
+      }
+      saveMuteSetting();
+      updateMuteButton();
+    }
+
+    // Use the native share sheet when possible, otherwise copy the message and clean game URL.
+    let shareButtonResetTimer = null;
+
+    function getCleanGameUrl() {
+      const gameUrl = new URL(window.location.href);
+      gameUrl.search = '';
+      gameUrl.hash = '';
+      return gameUrl.href;
+    }
+
+    async function copyShareText(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (error) {
+        // Try the older copy command if clipboard permissions or support are missing.
+      }
+
+      let temporaryField;
+      try {
+        temporaryField = document.createElement('textarea');
+        temporaryField.value = text;
+        temporaryField.setAttribute('readonly', '');
+        temporaryField.style.position = 'fixed';
+        temporaryField.style.opacity = '0';
+        temporaryField.style.pointerEvents = 'none';
+        document.body.appendChild(temporaryField);
+        temporaryField.select();
+        temporaryField.setSelectionRange(0, temporaryField.value.length);
+        return document.execCommand('copy');
+      } catch (error) {
+        return false;
+      } finally {
+        if (temporaryField) temporaryField.remove();
+      }
+    }
+
+    function showCopiedFeedback() {
+      shareButton.textContent = 'Copied! Paste it to your friends';
+      if (shareButtonResetTimer) clearTimeout(shareButtonResetTimer);
+      shareButtonResetTimer = setTimeout(() => {
+        shareButton.textContent = 'Share score';
+        shareButtonResetTimer = null;
+      }, 2000);
+    }
+
+    async function shareScore() {
+      const message = `I scored ${score} on Flappy Bikes by Yalla Bikes! Can you beat me? 🚲`;
+      const gameUrl = getCleanGameUrl();
+
+      if (typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: 'Flappy Bikes', text: message, url: gameUrl });
+          return;
+        } catch (error) {
+          // Closing the native share sheet is a normal cancellation, not an error.
+          if (error && error.name === 'AbortError') return;
+        }
+      }
+
+      const copied = await copyShareText(`${message}\n${gameUrl}`);
+      if (copied) showCopiedFeedback();
+    }
 
     function readHighScore() {
       try {
@@ -206,7 +507,7 @@
       bestScoreEl.textContent = `Best: ${bestScore}`;
     }
 
-    let width = 0, height = 0, groundY = 0, lastTime = 0;
+    let width = 0, height = 0, playWidth = 0, playLeft = 0, groundY = 0, lastTime = 0;
     let groundScroll = 0;
     let skylineScroll = 0;
     let state = 'start';
@@ -216,20 +517,39 @@
     const bike = { x: 0, y: 0, vy: 0, rotation: 0 };
 
     function resize() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = shell.clientWidth;
-      height = shell.clientHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const previousPlayWidth = playWidth;
+      const previousGroundY = groundY;
+      width = stage.clientWidth;
+      height = stage.clientHeight;
+      // Keep the former inner play width so the same obstacle spacing and speed are preserved.
+      playWidth = Math.min(width, Math.max(1, Math.min(width * .94, 520) - 14));
+      playLeft = (width - playWidth) / 2;
+      stage.style.setProperty('--playfield-width', `${playWidth}px`);
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       groundY = height - Math.max(50, height * .105);
-      if (state !== 'playing') resetBike();
+      if (state !== 'playing') {
+        resetBike();
+      } else if (previousPlayWidth > 0 && previousGroundY > 0) {
+        // Preserve relative positions if the player rotates the device during a run.
+        const horizontalScale = playWidth / previousPlayWidth;
+        const verticalScale = groundY / previousGroundY;
+        bike.x *= horizontalScale;
+        bike.y *= verticalScale;
+        bike.vy *= verticalScale;
+        for (const obstacle of obstacles) {
+          obstacle.x *= horizontalScale;
+          obstacle.w *= horizontalScale;
+          obstacle.top *= verticalScale;
+          obstacle.gap *= verticalScale;
+        }
+      }
     }
 
     function resetBike() {
-      bike.x = width * .24;
+      bike.x = playWidth * .24;
       bike.y = height * .43;
       bike.vy = 0;
       bike.rotation = 0;
@@ -261,6 +581,8 @@
       newHighScoreEl.classList.toggle('hidden', !isNewHighScore);
       updateBestScoreDisplay();
       gameOverScreen.classList.remove('hidden');
+      playSound('crash');
+      if (isNewHighScore) playSound('new-high-score');
     }
 
     function hop() {
@@ -269,6 +591,7 @@
         return;
       }
       bike.vy = -450;
+      playSound('hop');
     }
 
     function addObstacle() {
@@ -277,12 +600,12 @@
       const topMin = 70;
       const topMax = groundY - gap - margin;
       const top = topMin + Math.random() * Math.max(20, topMax - topMin);
-      obstacles.push({ x: width + 35, w: Math.max(54, width * .13), top, gap, counted: false });
+      obstacles.push({ x: playWidth + 35, w: Math.max(54, playWidth * .13), top, gap, counted: false });
     }
 
     function update(dt) {
       if (state !== 'playing') return;
-      const speed = Math.max(145, width * .42);
+      const speed = Math.max(145, playWidth * .42);
       // This offset is visual only; obstacle and collision logic stays unchanged.
       groundScroll = (groundScroll + speed * dt) % 360;
       // A smaller scroll speed makes the distant hotel row feel farther away.
@@ -303,6 +626,7 @@
           obstacle.counted = true;
           score++;
           scoreEl.textContent = score;
+          playSound('score');
         }
       }
       obstacles = obstacles.filter(o => o.x + o.w > -20);
@@ -616,12 +940,19 @@
     }
 
     function drawBuildings() {
+      ctx.save();
+      // On a wide screen, keep foreground towers inside the centered play area.
+      ctx.beginPath();
+      ctx.rect(playLeft, 0, playWidth, groundY);
+      ctx.clip();
+      ctx.translate(playLeft, 0);
       for (const o of obstacles) {
         const bottomY = o.top + o.gap;
         // Opposing teal and cream facades keep the foreground towers distinct from the skyline.
         drawBuilding(o.x, 0, o.w, o.top, 'teal');
         drawBuilding(o.x, bottomY, o.w, groundY - bottomY, 'cream');
       }
+      ctx.restore();
     }
 
     function drawBuilding(x, y, w, h, style) {
@@ -658,7 +989,7 @@
 
     function drawBike() {
       ctx.save();
-      ctx.translate(bike.x, bike.y);
+      ctx.translate(playLeft + bike.x, bike.y);
       ctx.rotate(bike.rotation);
       const r = 20;
       ctx.lineWidth = 4;
@@ -700,11 +1031,44 @@
     }
 
     window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+    if ('ResizeObserver' in window) {
+      // Catch viewport/body size changes, including mobile browser chrome and rotations.
+      const stageResizeObserver = new ResizeObserver(resize);
+      stageResizeObserver.observe(stage);
+    }
+    // Capture the first user input anywhere, including the mute button, to unlock mobile audio.
+    window.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
     window.addEventListener('keydown', event => {
-      if (event.code === 'Space') { event.preventDefault(); hop(); }
+      if (event.code === 'KeyM') {
+        event.preventDefault();
+        if (!event.repeat) toggleMute();
+        return;
+      }
+      if (event.code === 'Space' && event.target !== muteButton && event.target !== shareButton && event.target !== bookRideButton) {
+        event.preventDefault();
+        hop();
+      }
     });
-    shell.addEventListener('pointerdown', event => { event.preventDefault(); hop(); });
+    muteButton.addEventListener('pointerdown', event => event.stopPropagation());
+    muteButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMute();
+    });
+    shareButton.addEventListener('pointerdown', event => event.stopPropagation());
+    shareButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      shareScore();
+    });
+    bookRideButton.addEventListener('pointerdown', event => event.stopPropagation());
+    bookRideButton.addEventListener('click', event => event.stopPropagation());
+    stage.addEventListener('pointerdown', event => { event.preventDefault(); hop(); });
 
+    updateMuteButton();
     updateBestScoreDisplay();
     resize();
     requestAnimationFrame(frame);
