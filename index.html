@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Raleway:wght@400;600;700&display=swap" rel="stylesheet" />
+  <title>Flappy Bikes</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --teal: #1A6175;
+      --navy-teal: #0D303B;
+      --orange: #FF9D3F;
+      --sea-blue: #CCE3EC;
+      --white: #FFFFFF;
+      font-family: "Raleway", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--sea-blue);
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    .game-shell {
+      position: relative;
+      width: min(94vw, 520px);
+      height: min(92vh, 780px);
+      min-height: 460px;
+      border: 7px solid var(--navy-teal);
+      border-radius: 28px;
+      overflow: hidden;
+      background: var(--sea-blue);
+      box-shadow: 0 14px 0 rgba(13, 48, 59, .18), 0 24px 44px rgba(13, 48, 59, .2);
+    }
+
+    canvas { display: block; width: 100%; height: 100%; }
+
+    .hud {
+      position: absolute;
+      inset: 15px 18px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      color: var(--navy-teal);
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-shadow: 0 2px 0 rgba(255,255,255,.65);
+    }
+
+    .brand { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; line-height: 1.05; }
+    .brand-title {
+      color: #FFFFFF;
+      font-family: "Poppins", sans-serif;
+      font-size: clamp(18px, 4.68vw, 26px);
+      font-weight: 600;
+      white-space: nowrap;
+      text-shadow: 1px 2px 2px rgba(13,48,59,.65);
+    }
+    .brand-byline {
+      color: #FF9D3F;
+      font-family: "Raleway", sans-serif;
+      font-size: clamp(10px, 2.8vw, 13px);
+      font-weight: 600;
+      text-shadow: 0 1px 2px rgba(13,48,59,.6);
+    }
+    .score-wrap { display: flex; align-items: baseline; gap: 12px; }
+    .score, .best-score { font-family: "Poppins", sans-serif; }
+    .score { font-size: clamp(22px, 6vw, 34px); }
+    .best-score { font-size: clamp(13px, 3.5vw, 17px); }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 30px;
+      text-align: center;
+      background: linear-gradient(rgba(204,227,236,.18), rgba(255,255,255,.45));
+    }
+
+    .card {
+      width: min(100%, 360px);
+      padding: 30px 22px 26px;
+      border: 5px solid var(--navy-teal);
+      border-radius: 24px;
+      background: var(--white);
+      box-shadow: 0 9px 0 rgba(13, 48, 59, .2);
+    }
+
+    h1, h2 { margin: 0; color: var(--navy-teal); line-height: .95; font-family: "Poppins", sans-serif; }
+    h1 { font-size: clamp(42px, 12vw, 72px); letter-spacing: -.06em; }
+    h2 { font-size: clamp(30px, 8vw, 46px); }
+
+    .subtitle {
+      margin: 16px 0 24px;
+      color: var(--teal);
+      font-size: clamp(15px, 4vw, 19px);
+      font-weight: 600;
+    }
+
+    .prompt {
+      display: inline-block;
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: var(--navy-teal);
+      background: var(--orange);
+      box-shadow: 0 5px 0 #d47925;
+      font-size: clamp(14px, 3.8vw, 18px);
+      font-family: "Poppins", sans-serif;
+      font-weight: 600;
+    }
+
+    .tip { margin: 18px 0 0; color: var(--teal); font-size: 13px; font-weight: 600; }
+    .new-high-score { margin: -8px 0 18px; color: var(--orange); font-family: "Poppins", sans-serif; font-size: 17px; }
+    .new-high-score.hidden { display: none; }
+    .tel-aviv-link { margin: 16px 0 0; color: var(--teal); font-size: 12px; font-weight: 600; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main class="game-shell" aria-label="Flappy Bikes game">
+    <canvas id="game" aria-label="Game canvas"></canvas>
+    <div class="hud">
+      <div class="brand">
+        <span class="brand-title">Flappy Bikes</span>
+        <span class="brand-byline">by Yalla Bikes</span>
+      </div>
+      <div class="score-wrap">
+        <div class="score" id="score">0</div>
+        <div class="best-score" id="best-score">Best: 0</div>
+      </div>
+    </div>
+
+    <section class="overlay" id="start-screen">
+      <div class="card">
+        <h1>Flappy<br>Bikes</h1>
+        <p class="subtitle">by Yalla Bikes Tel Aviv</p>
+        <div class="prompt">Press Space or tap to start</div>
+        <p class="tip">Keep hopping to fly through the city.</p>
+      </div>
+    </section>
+
+    <section class="overlay hidden" id="game-over-screen">
+      <div class="card">
+        <h2>Bike bonk!</h2>
+        <p class="subtitle">Score: <span id="final-score">0</span> &nbsp;·&nbsp; Best: <span id="final-best-score">0</span></p>
+        <p class="new-high-score hidden" id="new-high-score">New high score!</p>
+        <div class="prompt">Press Space or tap to play again</div>
+        <p class="tip">One more ride?</p>
+        <p class="tel-aviv-link">Explore Tel Aviv by bike - yallabikestlv.com</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Everything lives in this file: drawing, physics, collision detection, and input.
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const shell = document.querySelector('.game-shell');
+    const scoreEl = document.getElementById('score');
+    const bestScoreEl = document.getElementById('best-score');
+    const finalScoreEl = document.getElementById('final-score');
+    const finalBestScoreEl = document.getElementById('final-best-score');
+    const newHighScoreEl = document.getElementById('new-high-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+
+    // localStorage can be disabled in some browsers, so all access is safely guarded.
+    const HIGH_SCORE_KEY = 'flappy-bikes-high-score';
+    let bestScore = readHighScore();
+
+    function readHighScore() {
+      try {
+        const savedScore = Number.parseInt(localStorage.getItem(HIGH_SCORE_KEY), 10);
+        return Number.isFinite(savedScore) && savedScore >= 0 ? savedScore : 0;
+      } catch (error) {
+        return 0;
+      }
+    }
+
+    function saveHighScore(value) {
+      try {
+        localStorage.setItem(HIGH_SCORE_KEY, String(value));
+      } catch (error) {
+        // The game still works when browser storage is unavailable.
+      }
+    }
+
+    function updateBestScoreDisplay() {
+      bestScoreEl.textContent = `Best: ${bestScore}`;
+    }
+
+    let width = 0, height = 0, groundY = 0, lastTime = 0;
+    let groundScroll = 0;
+    let skylineScroll = 0;
+    let state = 'start';
+    let score = 0;
+    let obstacles = [];
+    let spawnTimer = 0;
+    const bike = { x: 0, y: 0, vy: 0, rotation: 0 };
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = shell.clientWidth;
+      height = shell.clientHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      groundY = height - Math.max(50, height * .105);
+      if (state !== 'playing') resetBike();
+    }
+
+    function resetBike() {
+      bike.x = width * .24;
+      bike.y = height * .43;
+      bike.vy = 0;
+      bike.rotation = 0;
+    }
+
+    function startGame() {
+      state = 'playing';
+      score = 0;
+      skylineScroll = 0;
+      obstacles = [];
+      spawnTimer = .25;
+      scoreEl.textContent = score;
+      startScreen.classList.add('hidden');
+      gameOverScreen.classList.add('hidden');
+      resetBike();
+      updateBestScoreDisplay();
+      hop();
+    }
+
+    function endGame() {
+      state = 'gameover';
+      const isNewHighScore = score > bestScore;
+      if (isNewHighScore) {
+        bestScore = score;
+        saveHighScore(bestScore);
+      }
+      finalScoreEl.textContent = score;
+      finalBestScoreEl.textContent = bestScore;
+      newHighScoreEl.classList.toggle('hidden', !isNewHighScore);
+      updateBestScoreDisplay();
+      gameOverScreen.classList.remove('hidden');
+    }
+
+    function hop() {
+      if (state === 'start' || state === 'gameover') {
+        startGame();
+        return;
+      }
+      bike.vy = -450;
+    }
+
+    function addObstacle() {
+      const gap = Math.max(145, height * .25);
+      const margin = 72;
+      const topMin = 70;
+      const topMax = groundY - gap - margin;
+      const top = topMin + Math.random() * Math.max(20, topMax - topMin);
+      obstacles.push({ x: width + 35, w: Math.max(54, width * .13), top, gap, counted: false });
+    }
+
+    function update(dt) {
+      if (state !== 'playing') return;
+      const speed = Math.max(145, width * .42);
+      // This offset is visual only; obstacle and collision logic stays unchanged.
+      groundScroll = (groundScroll + speed * dt) % 360;
+      // A smaller scroll speed makes the distant hotel row feel farther away.
+      skylineScroll = (skylineScroll + speed * dt * .24) % Math.max(1, width);
+      bike.vy += 1200 * dt;
+      bike.y += bike.vy * dt;
+      bike.rotation = Math.max(-.32, Math.min(.65, bike.vy / 850));
+
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        addObstacle();
+        spawnTimer = 1.65;
+      }
+
+      for (const obstacle of obstacles) {
+        obstacle.x -= speed * dt;
+        if (!obstacle.counted && obstacle.x + obstacle.w < bike.x - 26) {
+          obstacle.counted = true;
+          score++;
+          scoreEl.textContent = score;
+        }
+      }
+      obstacles = obstacles.filter(o => o.x + o.w > -20);
+
+      const hitGround = bike.y + 25 > groundY;
+      const hitTop = bike.y - 25 < 0;
+      const bikeBox = { left: bike.x - 27, right: bike.x + 27, top: bike.y - 25, bottom: bike.y + 25 };
+      const hitBuilding = obstacles.some(o => {
+        const horizontal = bikeBox.right > o.x && bikeBox.left < o.x + o.w;
+        const vertical = bikeBox.top < o.top || bikeBox.bottom > o.top + o.gap;
+        return horizontal && vertical;
+      });
+      if (hitGround || hitTop || hitBuilding) endGame();
+    }
+
+    function drawSky() {
+      const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+      sky.addColorStop(0, '#CCE3EC');
+      sky.addColorStop(1, '#FFFFFF');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, width, height);
+
+      // The hotel row sits far behind the riding path and sea horizon.
+      const promenadeBottom = height - 24;
+      const promenadeHeight = promenadeBottom - groundY;
+      const seaY = Math.max(groundY - 42, 0);
+      drawHotelSkyline(seaY);
+
+      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      drawCloud(width * .16, height * .17, 1.1);
+      drawCloud(width * .83, height * .34, .78);
+
+      // The lower scene is layered from the horizon down: sea, promenade, bike lane, sand.
+      ctx.fillStyle = '#5CAFD0';
+      ctx.fillRect(0, seaY, width, Math.max(0, groundY - seaY));
+      drawSeaWaves(seaY + 8);
+
+      // Light gray and cream paving with a gently wavy tile pattern.
+      ctx.fillStyle = '#E8E8E1';
+      ctx.fillRect(0, groundY, width, Math.max(0, promenadeHeight));
+      ctx.fillStyle = '#F7F1DC';
+      ctx.fillRect(0, groundY, width, Math.min(8, promenadeHeight));
+      drawWavyTiles(groundY + 9, promenadeBottom);
+
+      // A teal bike lane with dashed white divider markings.
+      const laneY = groundY + Math.max(12, promenadeHeight * .32);
+      const laneHeight = Math.max(12, promenadeHeight * .44);
+      ctx.fillStyle = '#1A6175';
+      ctx.fillRect(0, laneY, width, laneHeight);
+      ctx.fillStyle = '#FFFFFF';
+      for (let x = -groundScroll % 42; x < width; x += 42) {
+        ctx.fillRect(x, laneY + laneHeight - 4, 22, 3);
+      }
+
+      // The warm sand sits at the very bottom of the frame.
+      ctx.fillStyle = '#E8C98C';
+      ctx.fillRect(0, promenadeBottom, width, height - promenadeBottom);
+      ctx.fillStyle = '#D8B873';
+      for (let x = -groundScroll % 34; x < width; x += 34) {
+        ctx.fillRect(x, promenadeBottom + 10, 12, 2);
+      }
+
+      drawBeachDetails(groundY, laneY, laneHeight);
+    }
+
+    // These eight silhouettes are built from canvas shapes, with one viewport-width loop tile.
+    const HOTEL_SKYLINE = [
+      { kind: 'rainbow', width: .78, height: .39 },
+      { kind: 'slab', width: 1.08, height: .32 },
+      { kind: 'tower', width: .62, height: .54 },
+      { kind: 'curved', width: .78, height: .57 },
+      { kind: 'wide', width: 1.08, height: .46 },
+      { kind: 'glass', width: .78, height: .52 },
+      { kind: 'modern', width: .72, height: .58 },
+      { kind: 'elegant', width: .82, height: .30 }
+    ];
+
+    function drawHotelSkyline(horizonY) {
+      const cycle = Math.max(1, width);
+      const cell = cycle / HOTEL_SKYLINE.length;
+      const offset = skylineScroll % cycle;
+
+      ctx.save();
+      // Soft opacity keeps the landmark shapes behind the brighter game foreground.
+      ctx.globalAlpha = .58;
+      for (let rowX = -offset; rowX < width; rowX += cycle) {
+        HOTEL_SKYLINE.forEach((hotel, index) => {
+          const centerX = rowX + (index + .5) * cell;
+          const buildingWidth = cell * hotel.width;
+          const buildingHeight = groundY * hotel.height;
+          drawHotelShape(hotel.kind, centerX - buildingWidth / 2, horizonY, buildingWidth, buildingHeight);
+        });
+      }
+      ctx.restore();
+    }
+
+    function drawHotelShape(kind, x, baseY, w, h) {
+      const top = baseY - h;
+      const right = x + w;
+
+      // A quiet drop shadow separates pale hotel walls from the sky.
+      ctx.fillStyle = 'rgba(13,48,59,.12)';
+      ctx.fillRect(x + 3, top + 3, w, h);
+
+      if (kind === 'curved') {
+        // David InterContinental: softly bowed west-facing front.
+        ctx.beginPath();
+        ctx.moveTo(x + w * .18, baseY);
+        ctx.lineTo(x + w * .18, top + h * .12);
+        ctx.quadraticCurveTo(x + w * .10, top + h * .48, x + w * .22, top);
+        ctx.lineTo(right, top);
+        ctx.lineTo(right, baseY);
+        ctx.closePath();
+        ctx.fillStyle = '#D7DDDA';
+        ctx.fill();
+        drawHotelGrid(x + w * .28, top + 13, w * .64, h - 18, 4, 9, '#789CA5');
+        ctx.strokeStyle = 'rgba(255,255,255,.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + w * .2, top + h * .2); ctx.quadraticCurveTo(x + w * .12, top + h * .52, x + w * .22, baseY - 4); ctx.stroke();
+        return;
+      }
+
+      const fills = {
+        rainbow: '#F2E9D9', slab: '#D8E0DF', tower: '#F3F0E8',
+        wide: '#D9D8CE', glass: '#8FBCCB', modern: '#E9E9E2', elegant: '#E9DCC4'
+      };
+      ctx.fillStyle = fills[kind] || '#E5E7E2';
+
+      if (kind === 'elegant') {
+        // Opera Herbert Samuel: low cream hotel with a fine cornice and roof detail.
+        ctx.fillRect(x, top + h * .12, w, h * .88);
+        ctx.fillRect(x - 2, top + h * .12, w + 4, Math.max(4, h * .06));
+        ctx.fillStyle = '#D2C3A8';
+        ctx.fillRect(x + w * .12, top, w * .76, h * .12);
+        drawHotelGrid(x + 6, top + h * .34, w - 12, h * .53, 4, 2, '#78939A');
+        return;
+      }
+
+      if (kind === 'slab' || kind === 'wide') {
+        // Broad, flat roofs make these two hotels read as modernist waterfront blocks.
+        ctx.fillRect(x, top + 8, w, h - 8);
+        ctx.fillRect(x - 3, top + 3, w + 6, 8);
+      } else if (kind === 'tower' || kind === 'modern') {
+        ctx.fillRect(x + w * .12, top + 8, w * .76, h - 8);
+        ctx.fillRect(x + w * .07, top + 3, w * .86, 7);
+      } else {
+        ctx.fillRect(x, top + 7, w, h - 7);
+        ctx.fillRect(x - 2, top + 3, w + 4, 6);
+      }
+
+      if (kind === 'rainbow') {
+        // Bright horizontal color bands are the signature cue on the Dan Tel Aviv facade.
+        const stripes = ['#E77D79', '#F3A05A', '#EBD36F', '#8DBB83', '#79B6C4', '#9A91B9'];
+        const bandH = Math.max(5, (h - 17) / stripes.length);
+        stripes.forEach((color, index) => {
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 4, top + 10 + index * bandH, w - 8, bandH - 1);
+        });
+        ctx.fillStyle = 'rgba(255,255,255,.8)';
+        ctx.fillRect(x + 4, top + 9, w - 8, 2);
+      } else if (kind === 'glass') {
+        // Royal Beach is drawn as blue glass with broad vertical mullions.
+        ctx.fillStyle = '#83B8C9';
+        ctx.fillRect(x + 3, top + 10, w - 6, h - 14);
+        ctx.fillStyle = 'rgba(255,255,255,.6)';
+        for (let col = 1; col < 5; col++) ctx.fillRect(x + (w / 5) * col, top + 10, 2, h - 14);
+        ctx.fillStyle = 'rgba(255,255,255,.55)';
+        for (let row = 1; row < 9; row++) ctx.fillRect(x + 3, top + 10 + row * ((h - 14) / 9), w - 6, 1.5);
+      } else {
+        const windows = kind === 'slab' ? '#78959B' : '#8AA9AD';
+        const cols = kind === 'slab' || kind === 'wide' ? 8 : 5;
+        const rows = Math.max(3, Math.floor(h / 19));
+        drawHotelGrid(x + 6, top + 15, w - 12, h - 21, cols, rows, windows);
+        if (kind === 'wide') {
+          ctx.fillStyle = 'rgba(255,255,255,.55)';
+          ctx.fillRect(x + 4, top + 10, w - 8, 3);
+        }
+      }
+
+      // Small rooftop caps distinguish the tall towers without adding external artwork.
+      if (kind === 'tower' || kind === 'modern') {
+        ctx.fillStyle = '#CAD3D1';
+        ctx.fillRect(x + w * .34, top, w * .32, 5);
+      }
+    }
+
+    function drawHotelGrid(x, y, w, h, columns, rows, color) {
+      if (w <= 0 || h <= 0) return;
+      const cellW = w / columns;
+      const cellH = h / rows;
+      ctx.fillStyle = color;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < columns; col++) {
+          const windowW = Math.max(2, cellW * .46);
+          const windowH = Math.max(2, cellH * .42);
+          ctx.fillRect(x + col * cellW + (cellW - windowW) / 2, y + row * cellH + (cellH - windowH) / 2, windowW, windowH);
+        }
+      }
+    }
+
+    function drawSeaWaves(y) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,.65)';
+      ctx.lineWidth = 2;
+      for (let x = -groundScroll % 58; x < width + 58; x += 58) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + 8, y - 4, x + 16, y);
+        ctx.quadraticCurveTo(x + 24, y + 4, x + 32, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawWavyTiles(top, bottom) {
+      if (bottom <= top) return;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(13,48,59,.15)';
+      ctx.lineWidth = 1;
+      for (let x = -groundScroll % 32; x < width + 32; x += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        for (let y = top; y < bottom + 16; y += 16) {
+          ctx.quadraticCurveTo(x + 8, y + 5, x, y + 10);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBeachDetails(ground, laneY, laneHeight) {
+      // Repeating world-space positions make the details scroll at obstacle speed.
+      const cycle = 360;
+      for (let base = -groundScroll % cycle; base < width + cycle; base += cycle) {
+        drawPalm(base + 48, ground - 4);
+        drawBench(base + 158, ground + 19);
+        drawStreetlamp(base + 275, ground - 5);
+        drawLifeguardHut(base + 334, ground - 2);
+      }
+
+      // Add a small painted bicycle symbol to each lane segment.
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,.7)';
+      ctx.lineWidth = 2;
+      for (let x = -groundScroll % 180; x < width + 180; x += 180) {
+        const y = laneY + laneHeight / 2;
+        ctx.beginPath();
+        ctx.arc(x + 7, y, 5, 0, Math.PI * 2);
+        ctx.arc(x + 22, y, 5, 0, Math.PI * 2);
+        ctx.moveTo(x + 7, y); ctx.lineTo(x + 14, y - 7); ctx.lineTo(x + 22, y);
+        ctx.moveTo(x + 14, y - 7); ctx.lineTo(x + 19, y - 9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPalm(x, y) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.strokeStyle = '#8B5A3C';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-4, -18, 2, -34); ctx.stroke();
+      ctx.strokeStyle = '#1A6175';
+      ctx.lineWidth = 3;
+      for (let angle = -1.35; angle <= -.1; angle += .3) {
+        ctx.beginPath(); ctx.moveTo(2, -33); ctx.lineTo(2 + Math.cos(angle) * 18, -33 + Math.sin(angle) * 11); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBench(x, y) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#8B5A3C';
+      ctx.fillRect(0, 0, 32, 5);
+      ctx.fillRect(4, 5, 4, 12); ctx.fillRect(24, 5, 4, 12);
+      ctx.fillStyle = '#0D303B';
+      ctx.fillRect(0, -5, 32, 5);
+      ctx.restore();
+    }
+
+    function drawStreetlamp(x, y) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.strokeStyle = '#0D303B';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -42); ctx.lineTo(9, -48); ctx.stroke();
+      ctx.fillStyle = '#FF9D3F';
+      ctx.beginPath(); ctx.arc(10, -48, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    function drawLifeguardHut(x, y) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, -25, 31, 23);
+      ctx.fillStyle = '#FF9D3F';
+      ctx.beginPath(); ctx.moveTo(-4, -25); ctx.lineTo(35, -25); ctx.lineTo(28, -34); ctx.lineTo(3, -34); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#0D303B';
+      ctx.fillRect(12, -16, 7, 14);
+      ctx.restore();
+    }
+
+    function drawCloud(x, y, scale) {
+      ctx.beginPath();
+      ctx.arc(x, y, 19 * scale, 0, Math.PI * 2);
+      ctx.arc(x + 22 * scale, y - 8 * scale, 26 * scale, 0, Math.PI * 2);
+      ctx.arc(x + 49 * scale, y, 17 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawBuildings() {
+      for (const o of obstacles) {
+        const bottomY = o.top + o.gap;
+        // Opposing teal and cream facades keep the foreground towers distinct from the skyline.
+        drawBuilding(o.x, 0, o.w, o.top, 'teal');
+        drawBuilding(o.x, bottomY, o.w, groundY - bottomY, 'cream');
+      }
+    }
+
+    function drawBuilding(x, y, w, h, style) {
+      // Only the paint changes here: the obstacle x/y/w/h still match collision geometry exactly.
+      const isTeal = style === 'teal';
+      const facade = isTeal ? '#1A6175' : '#F2EBDD';
+      const windows = isTeal ? '#F7F1DC' : '#1A6175';
+      const trim = '#0D303B';
+      ctx.fillStyle = facade;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = trim;
+      ctx.fillRect(x, y, Math.min(6, w * .1), h);
+      ctx.fillRect(x, y, w, Math.min(8, h));
+      ctx.fillStyle = '#E8C98C';
+      ctx.fillRect(x + Math.min(6, w * .1), y + Math.min(8, h), Math.max(0, w - Math.min(6, w * .1)), Math.min(3, Math.max(0, h - 8)));
+
+      const columns = Math.max(2, Math.floor((w - 16) / 16));
+      const rows = Math.max(1, Math.floor((h - 18) / 25));
+      const usableW = Math.max(0, w - 16);
+      const usableH = Math.max(0, h - 18);
+      const cellW = usableW / columns;
+      const cellH = usableH / rows;
+      ctx.fillStyle = windows;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < columns; col++) {
+          const windowW = Math.max(4, Math.min(9, cellW * .55));
+          const windowH = Math.max(5, Math.min(12, cellH * .58));
+          ctx.fillRect(x + 10 + col * cellW + (cellW - windowW) / 2, y + 12 + row * cellH + (cellH - windowH) / 2, windowW, windowH);
+        }
+      }
+      ctx.fillStyle = trim;
+      ctx.fillRect(x, y + h - Math.min(6, h), w, Math.min(6, h));
+    }
+
+    function drawBike() {
+      ctx.save();
+      ctx.translate(bike.x, bike.y);
+      ctx.rotate(bike.rotation);
+      const r = 20;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0D303B';
+      for (const wx of [-23, 23]) {
+        // Draw each tire and solid wheel face without any independently rotating spokes.
+        ctx.fillStyle = '#0D303B';
+        ctx.beginPath(); ctx.arc(wx, 14, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath(); ctx.arc(wx, 14, r * .66, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0D303B';
+        ctx.beginPath(); ctx.arc(wx, 14, 3, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = '#1A6175'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-23, 14); ctx.lineTo(-5, -7); ctx.lineTo(23, 14); ctx.lineTo(-23, 14); ctx.lineTo(8, 14); ctx.lineTo(-5, -7); ctx.stroke();
+      ctx.strokeStyle = '#0D303B'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(23, 14); ctx.lineTo(20, -5); ctx.lineTo(29, -10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5, -7); ctx.lineTo(-13, -12); ctx.stroke();
+      // Rider: head, helmet, body, and waving arm.
+      ctx.fillStyle = '#ffd2a6'; ctx.beginPath(); ctx.arc(-1, -27, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1A6175'; ctx.beginPath(); ctx.arc(-1, -30, 10, Math.PI, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#FF9D3F'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-2, -18); ctx.lineTo(-5, -4); ctx.stroke();
+      ctx.strokeStyle = '#ffd2a6'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-2, -15); ctx.lineTo(12, -10); ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw() {
+      drawSky();
+      drawBuildings();
+      drawBike();
+    }
+
+    function frame(time) {
+      const dt = Math.min((time - lastTime) / 1000 || 0, .035);
+      lastTime = time;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('keydown', event => {
+      if (event.code === 'Space') { event.preventDefault(); hop(); }
+    });
+    shell.addEventListener('pointerdown', event => { event.preventDefault(); hop(); });
+
+    updateBestScoreDisplay();
+    resize();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
