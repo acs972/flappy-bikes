@@ -53,10 +53,10 @@
       align-items: center;
       pointer-events: none;
       z-index: 1;
-      color: var(--navy-teal);
+      color: var(--hud-ink, var(--navy-teal));
       font-weight: 700;
       letter-spacing: .04em;
-      text-shadow: 0 2px 0 rgba(255,255,255,.65);
+      text-shadow: 0 2px 0 var(--hud-shadow, rgba(255,255,255,.65));
     }
 
     .brand { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; line-height: 1.05; }
@@ -259,6 +259,104 @@
     </section>
   <script>
     // Everything lives in this file: drawing, physics, collision detection, and input.
+    // Building opening = max(minimumPx, viewport height * heightRatio) * sizeMultiplier.
+    // The safe-height limit only reduces the target on very short viewports.
+    const BUILDING_GAP_SETTINGS = {
+      minimumPx: 145,
+      heightRatio: .25,
+      sizeMultiplier: 1.3,
+      topClearancePx: 70,
+      minimumGroundClearancePx: 12,
+      preferredGroundClearancePx: 72
+    };
+
+    // Time-of-day score thresholds are half-open ranges: start <= (score % cyclePoints) < end.
+    // Tweak these palettes and thresholds to adjust the look without touching game mechanics.
+    const TIME_OF_DAY_SETTINGS = {
+      cyclePoints: 24,
+      transitionMs: 2000,
+      phases: [
+        {
+          id: 'midday', label: 'Midday', start: 0, end: 6,
+          palette: {
+            skyTop: '#CCE3EC', skyBottom: '#FFFFFF', sea: '#5CAFD0', wave: '#FFFFFF', waveAlpha: .65,
+            cloud: '#FFFFFF', cloudAlpha: .78, promenade: '#E8E8E1', promenadeEdge: '#F7F1DC',
+            tileLine: '#0D303B', tileAlpha: .15, bikeLane: '#1A6175', laneMark: '#FFFFFF', laneMarkAlpha: 1,
+            sand: '#E8C98C', sandLine: '#D8B873', windowLight: '#FFE09A', windowGlow: 0,
+            lampGlow: 0, ambientTint: '#FFFFFF', ambientTintAlpha: 0, sunriseGlow: '#FF8A9A', sunriseGlowAlpha: 0,
+            sun: '#FFE49A', sunAlpha: 0, sunX: .82, sunY: .3, starsAlpha: 0,
+            moonAlpha: 0, seaReflection: '#FFF0B5', seaReflectionAlpha: 0, bikeHaloAlpha: 0,
+            hudInk: '#0D303B', hudShadow: '#FFFFFF', hudShadowAlpha: .65
+          }
+        },
+        {
+          id: 'golden-hour', label: 'Golden hour', start: 6, end: 10,
+          palette: {
+            skyTop: '#E99A70', skyBottom: '#FFD1A1', sea: '#699DB0', wave: '#FFE8C9', waveAlpha: .62,
+            cloud: '#FFF0D9', cloudAlpha: .82, promenade: '#E8D2B6', promenadeEdge: '#FFE3B4',
+            tileLine: '#6B4A43', tileAlpha: .18, bikeLane: '#356B78', laneMark: '#FFF2D5', laneMarkAlpha: .96,
+            sand: '#DDBB87', sandLine: '#C99C6B', windowLight: '#FFE2A0', windowGlow: .08,
+            lampGlow: .08, ambientTint: '#F08B4D', ambientTintAlpha: .13, sunriseGlow: '#FF9A68', sunriseGlowAlpha: 0,
+            sun: '#FFF0B3', sunAlpha: .98, sunX: .84, sunY: .42, starsAlpha: 0,
+            moonAlpha: 0, seaReflection: '#FFE29A', seaReflectionAlpha: .12, bikeHaloAlpha: .04,
+            hudInk: '#3A3540', hudShadow: '#FFFFFF', hudShadowAlpha: .8
+          }
+        },
+        {
+          id: 'dusk', label: 'Dusk', start: 10, end: 12,
+          palette: {
+            skyTop: '#615B8D', skyBottom: '#E49AAF', sea: '#466E8E', wave: '#D9D6E8', waveAlpha: .52,
+            cloud: '#E8C6DE', cloudAlpha: .5, promenade: '#8E7B87', promenadeEdge: '#E8B1C0',
+            tileLine: '#302F4D', tileAlpha: .22, bikeLane: '#294E66', laneMark: '#E9DDEA', laneMarkAlpha: .9,
+            sand: '#AA817B', sandLine: '#89696F', windowLight: '#FFD477', windowGlow: .72,
+            lampGlow: .72, ambientTint: '#A45189', ambientTintAlpha: .1, sunriseGlow: '#FF9A9D', sunriseGlowAlpha: .04,
+            sun: '#FFB77C', sunAlpha: 0, sunX: .84, sunY: .98, starsAlpha: .2,
+            moonAlpha: 0, seaReflection: '#FFDA91', seaReflectionAlpha: .12, bikeHaloAlpha: .12,
+            hudInk: '#FFF8F0', hudShadow: '#292844', hudShadowAlpha: .9
+          }
+        },
+        {
+          id: 'night', label: 'Night', start: 12, end: 18,
+          palette: {
+            skyTop: '#07142D', skyBottom: '#172C4A', sea: '#163B5B', wave: '#8DAECA', waveAlpha: .42,
+            cloud: '#596A87', cloudAlpha: .3, promenade: '#444957', promenadeEdge: '#79798A',
+            tileLine: '#D0C8C5', tileAlpha: .16, bikeLane: '#173C53', laneMark: '#D6E5E8', laneMarkAlpha: .82,
+            sand: '#5D4E5D', sandLine: '#776474', windowLight: '#FFD16F', windowGlow: .98,
+            lampGlow: .95, ambientTint: '#07152E', ambientTintAlpha: .14, sunriseGlow: '#FF8D9C', sunriseGlowAlpha: 0,
+            sun: '#FFBF83', sunAlpha: 0, sunX: .84, sunY: .98, starsAlpha: .98,
+            moonAlpha: .96, seaReflection: '#D6E6FF', seaReflectionAlpha: .78, bikeHaloAlpha: .3,
+            hudInk: '#FFFFFF', hudShadow: '#09152D', hudShadowAlpha: .96
+          }
+        },
+        {
+          id: 'sunrise', label: 'Sunrise', start: 18, end: 22,
+          palette: {
+            skyTop: '#E58AA5', skyBottom: '#F7B57E', sea: '#648BA2', wave: '#FFE0D5', waveAlpha: .58,
+            cloud: '#FFE1D9', cloudAlpha: .7, promenade: '#D9B9AE', promenadeEdge: '#F8D7BF',
+            tileLine: '#795661', tileAlpha: .17, bikeLane: '#326476', laneMark: '#FFF0DC', laneMarkAlpha: .94,
+            sand: '#D6A780', sandLine: '#C18D70', windowLight: '#FFD998', windowGlow: 0,
+            lampGlow: 0, ambientTint: '#F07E86', ambientTintAlpha: .11, sunriseGlow: '#FF875F', sunriseGlowAlpha: .48,
+            sun: '#FFD59C', sunAlpha: 0, sunX: .18, sunY: .7, starsAlpha: 0,
+            moonAlpha: 0, seaReflection: '#FFD8A2', seaReflectionAlpha: 0, bikeHaloAlpha: .08,
+            hudInk: '#3D3041', hudShadow: '#FFFFFF', hudShadowAlpha: .84
+          }
+        },
+        {
+          id: 'midday-return', label: 'Midday', start: 22, end: 24,
+          palette: {
+            skyTop: '#CCE3EC', skyBottom: '#FFFFFF', sea: '#5CAFD0', wave: '#FFFFFF', waveAlpha: .65,
+            cloud: '#FFFFFF', cloudAlpha: .78, promenade: '#E8E8E1', promenadeEdge: '#F7F1DC',
+            tileLine: '#0D303B', tileAlpha: .15, bikeLane: '#1A6175', laneMark: '#FFFFFF', laneMarkAlpha: 1,
+            sand: '#E8C98C', sandLine: '#D8B873', windowLight: '#FFE09A', windowGlow: 0,
+            lampGlow: 0, ambientTint: '#FFFFFF', ambientTintAlpha: 0, sunriseGlow: '#FF8A9A', sunriseGlowAlpha: 0,
+            sun: '#FFE49A', sunAlpha: 0, sunX: .82, sunY: .3, starsAlpha: 0,
+            moonAlpha: 0, seaReflection: '#FFF0B5', seaReflectionAlpha: 0, bikeHaloAlpha: 0,
+            hudInk: '#0D303B', hudShadow: '#FFFFFF', hudShadowAlpha: .65
+          }
+        }
+      ]
+    };
+
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const stage = document.body;
@@ -515,6 +613,113 @@
     let obstacles = [];
     let spawnTimer = 0;
     const bike = { x: 0, y: 0, vy: 0, rotation: 0 };
+    const timeOfDay = {
+      phaseIndex: 0,
+      phaseProgress: 0,
+      palette: { ...TIME_OF_DAY_SETTINGS.phases[0].palette },
+      transition: null
+    };
+    let debugPhaseIndex = -1;
+    let lastHudInk = null;
+    let lastHudShadow = null;
+
+    function hexToRgb(color) {
+      const value = color.replace('#', '');
+      return {
+        r: Number.parseInt(value.slice(0, 2), 16),
+        g: Number.parseInt(value.slice(2, 4), 16),
+        b: Number.parseInt(value.slice(4, 6), 16)
+      };
+    }
+
+    function mixColor(from, to, amount) {
+      const start = hexToRgb(from);
+      const end = hexToRgb(to);
+      const channel = key => Math.round(start[key] + (end[key] - start[key]) * amount);
+      const hex = value => value.toString(16).padStart(2, '0');
+      return `#${hex(channel('r'))}${hex(channel('g'))}${hex(channel('b'))}`;
+    }
+
+    function rgbaColor(color, alpha) {
+      const { r, g, b } = hexToRgb(color);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function mixPalettes(from, to, amount) {
+      const result = {};
+      for (const key of Object.keys(to)) {
+        result[key] = typeof to[key] === 'number'
+          ? from[key] + (to[key] - from[key]) * amount
+          : mixColor(from[key], to[key], amount);
+      }
+      return result;
+    }
+
+    function phaseIndexForScore(value) {
+      const cycleScore = value % TIME_OF_DAY_SETTINGS.cyclePoints;
+      return TIME_OF_DAY_SETTINGS.phases.findIndex(phase => cycleScore >= phase.start && cycleScore < phase.end);
+    }
+
+    function beginTimeOfDayTransition(index, now, immediate = false) {
+      if (index === timeOfDay.phaseIndex && !immediate) return;
+      const phase = TIME_OF_DAY_SETTINGS.phases[index];
+      const currentPalette = { ...timeOfDay.palette };
+      timeOfDay.phaseIndex = index;
+      timeOfDay.transition = immediate ? null : { from: currentPalette, startedAt: now };
+      timeOfDay.palette = immediate ? { ...phase.palette } : currentPalette;
+      timeOfDay.phaseProgress = debugPhaseIndex >= 0 ? .55 : 0;
+    }
+
+    function resetTimeOfDay(now) {
+      debugPhaseIndex = -1;
+      const currentPalette = { ...timeOfDay.palette };
+      timeOfDay.phaseIndex = 0;
+      timeOfDay.phaseProgress = 0;
+      timeOfDay.palette = currentPalette;
+      timeOfDay.transition = { from: currentPalette, startedAt: now };
+    }
+
+    function syncHudPalette() {
+      const palette = timeOfDay.palette;
+      const shadow = rgbaColor(palette.hudShadow, palette.hudShadowAlpha);
+      if (palette.hudInk !== lastHudInk) {
+        document.documentElement.style.setProperty('--hud-ink', palette.hudInk);
+        lastHudInk = palette.hudInk;
+      }
+      if (shadow !== lastHudShadow) {
+        document.documentElement.style.setProperty('--hud-shadow', shadow);
+        lastHudShadow = shadow;
+      }
+    }
+
+    function updateTimeOfDay(now, dt) {
+      const targetIndex = debugPhaseIndex >= 0 ? debugPhaseIndex : phaseIndexForScore(score);
+      beginTimeOfDayTransition(targetIndex, now);
+
+      const phase = TIME_OF_DAY_SETTINGS.phases[timeOfDay.phaseIndex];
+      if (timeOfDay.transition) {
+        const rawProgress = Math.min(1, (now - timeOfDay.transition.startedAt) / TIME_OF_DAY_SETTINGS.transitionMs);
+        const easedProgress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+        timeOfDay.palette = mixPalettes(timeOfDay.transition.from, phase.palette, easedProgress);
+        if (rawProgress >= 1) timeOfDay.transition = null;
+      } else {
+        timeOfDay.palette = { ...phase.palette };
+      }
+
+      const cycleScore = score % TIME_OF_DAY_SETTINGS.cyclePoints;
+      const targetProgress = debugPhaseIndex >= 0
+        ? .55
+        : Math.max(0, Math.min(1, (cycleScore - phase.start) / (phase.end - phase.start)));
+      timeOfDay.phaseProgress += (targetProgress - timeOfDay.phaseProgress) * Math.min(1, dt * 2.5);
+      syncHudPalette();
+    }
+
+    function jumpToNextTimeOfDayPhase() {
+      const currentIndex = debugPhaseIndex >= 0 ? debugPhaseIndex : phaseIndexForScore(score);
+      debugPhaseIndex = (currentIndex + 1) % TIME_OF_DAY_SETTINGS.phases.length;
+      beginTimeOfDayTransition(debugPhaseIndex, performance.now());
+      timeOfDay.phaseProgress = .55;
+    }
 
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -558,6 +763,7 @@
     function startGame() {
       state = 'playing';
       score = 0;
+      resetTimeOfDay(performance.now());
       skylineScroll = 0;
       obstacles = [];
       spawnTimer = .25;
@@ -595,11 +801,18 @@
     }
 
     function addObstacle() {
-      const gap = Math.max(145, height * .25);
-      const margin = 72;
-      const topMin = 70;
-      const topMax = groundY - gap - margin;
-      const top = topMin + Math.random() * Math.max(20, topMax - topMin);
+      const settings = BUILDING_GAP_SETTINGS;
+      const requestedGap = Math.max(settings.minimumPx, height * settings.heightRatio) * settings.sizeMultiplier;
+      const topMin = Math.min(settings.topClearancePx, Math.max(1, groundY * .3));
+      const minimumGroundClearance = Math.min(settings.minimumGroundClearancePx, Math.max(1, groundY * .1));
+      const maximumSafeGap = Math.max(1, groundY - topMin - minimumGroundClearance);
+      const gap = Math.min(requestedGap, maximumSafeGap);
+      const verticalRoomAfterGap = groundY - topMin - gap;
+      const groundMargin = verticalRoomAfterGap >= settings.preferredGroundClearancePx
+        ? settings.preferredGroundClearancePx
+        : minimumGroundClearance;
+      const topMax = Math.max(topMin, groundY - gap - groundMargin);
+      const top = topMin + Math.random() * (topMax - topMin);
       obstacles.push({ x: playWidth + 35, w: Math.max(54, playWidth * .13), top, gap, counted: false });
     }
 
@@ -643,9 +856,10 @@
     }
 
     function drawSky() {
+      const palette = timeOfDay.palette;
       const sky = ctx.createLinearGradient(0, 0, 0, groundY);
-      sky.addColorStop(0, '#CCE3EC');
-      sky.addColorStop(1, '#FFFFFF');
+      sky.addColorStop(0, palette.skyTop);
+      sky.addColorStop(1, palette.skyBottom);
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, height);
 
@@ -653,43 +867,59 @@
       const promenadeBottom = height - 24;
       const promenadeHeight = promenadeBottom - groundY;
       const seaY = Math.max(groundY - 42, 0);
+      drawSunriseGlow(seaY);
       drawHotelSkyline(seaY);
 
-      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      ctx.fillStyle = rgbaColor(palette.cloud, palette.cloudAlpha);
       drawCloud(width * .16, height * .17, 1.1);
       drawCloud(width * .83, height * .34, .78);
 
       // The lower scene is layered from the horizon down: sea, promenade, bike lane, sand.
-      ctx.fillStyle = '#5CAFD0';
+      ctx.fillStyle = palette.sea;
       ctx.fillRect(0, seaY, width, Math.max(0, groundY - seaY));
       drawSeaWaves(seaY + 8);
 
       // Light gray and cream paving with a gently wavy tile pattern.
-      ctx.fillStyle = '#E8E8E1';
+      ctx.fillStyle = palette.promenade;
       ctx.fillRect(0, groundY, width, Math.max(0, promenadeHeight));
-      ctx.fillStyle = '#F7F1DC';
+      ctx.fillStyle = palette.promenadeEdge;
       ctx.fillRect(0, groundY, width, Math.min(8, promenadeHeight));
       drawWavyTiles(groundY + 9, promenadeBottom);
 
       // A teal bike lane with dashed white divider markings.
       const laneY = groundY + Math.max(12, promenadeHeight * .32);
       const laneHeight = Math.max(12, promenadeHeight * .44);
-      ctx.fillStyle = '#1A6175';
+      ctx.fillStyle = palette.bikeLane;
       ctx.fillRect(0, laneY, width, laneHeight);
-      ctx.fillStyle = '#FFFFFF';
+      ctx.save();
+      ctx.globalAlpha = palette.laneMarkAlpha;
+      ctx.fillStyle = palette.laneMark;
       for (let x = -groundScroll % 42; x < width; x += 42) {
         ctx.fillRect(x, laneY + laneHeight - 4, 22, 3);
       }
+      ctx.restore();
 
       // The warm sand sits at the very bottom of the frame.
-      ctx.fillStyle = '#E8C98C';
+      ctx.fillStyle = palette.sand;
       ctx.fillRect(0, promenadeBottom, width, height - promenadeBottom);
-      ctx.fillStyle = '#D8B873';
+      ctx.fillStyle = palette.sandLine;
       for (let x = -groundScroll % 34; x < width; x += 34) {
         ctx.fillRect(x, promenadeBottom + 10, 12, 2);
       }
 
       drawBeachDetails(groundY, laneY, laneHeight);
+    }
+
+    function drawSunriseGlow(seaY) {
+      const palette = timeOfDay.palette;
+      if (palette.sunriseGlowAlpha <= .005) return;
+      const centerX = width * .18;
+      const centerY = seaY - 8;
+      const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width * .48, groundY * .58));
+      glow.addColorStop(0, rgbaColor(palette.sunriseGlow, palette.sunriseGlowAlpha));
+      glow.addColorStop(1, rgbaColor(palette.sunriseGlow, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, seaY + 10);
     }
 
     // These eight silhouettes are built from canvas shapes, with one viewport-width loop tile.
@@ -789,7 +1019,7 @@
         ctx.fillRect(x + 4, top + 9, w - 8, 2);
       } else if (kind === 'glass') {
         // Royal Beach is drawn as blue glass with broad vertical mullions.
-        ctx.fillStyle = '#83B8C9';
+        ctx.fillStyle = mixColor('#83B8C9', timeOfDay.palette.windowLight, timeOfDay.palette.windowGlow);
         ctx.fillRect(x + 3, top + 10, w - 6, h - 14);
         ctx.fillStyle = 'rgba(255,255,255,.6)';
         for (let col = 1; col < 5; col++) ctx.fillRect(x + (w / 5) * col, top + 10, 2, h - 14);
@@ -817,7 +1047,7 @@
       if (w <= 0 || h <= 0) return;
       const cellW = w / columns;
       const cellH = h / rows;
-      ctx.fillStyle = color;
+      ctx.fillStyle = mixColor(color, timeOfDay.palette.windowLight, timeOfDay.palette.windowGlow);
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < columns; col++) {
           const windowW = Math.max(2, cellW * .46);
@@ -829,7 +1059,7 @@
 
     function drawSeaWaves(y) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,.65)';
+      ctx.strokeStyle = rgbaColor(timeOfDay.palette.wave, timeOfDay.palette.waveAlpha);
       ctx.lineWidth = 2;
       for (let x = -groundScroll % 58; x < width + 58; x += 58) {
         ctx.beginPath();
@@ -844,7 +1074,7 @@
     function drawWavyTiles(top, bottom) {
       if (bottom <= top) return;
       ctx.save();
-      ctx.strokeStyle = 'rgba(13,48,59,.15)';
+      ctx.strokeStyle = rgbaColor(timeOfDay.palette.tileLine, timeOfDay.palette.tileAlpha);
       ctx.lineWidth = 1;
       for (let x = -groundScroll % 32; x < width + 32; x += 32) {
         ctx.beginPath();
@@ -914,7 +1144,13 @@
       ctx.strokeStyle = '#0D303B';
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -42); ctx.lineTo(9, -48); ctx.stroke();
-      ctx.fillStyle = '#FF9D3F';
+      if (timeOfDay.palette.lampGlow > .02) {
+        ctx.globalAlpha = timeOfDay.palette.lampGlow * .2;
+        ctx.fillStyle = timeOfDay.palette.windowLight;
+        ctx.beginPath(); ctx.arc(10, -48, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = mixColor('#B7B0A1', timeOfDay.palette.windowLight, timeOfDay.palette.lampGlow);
       ctx.beginPath(); ctx.arc(10, -48, 4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
@@ -959,7 +1195,7 @@
       // Only the paint changes here: the obstacle x/y/w/h still match collision geometry exactly.
       const isTeal = style === 'teal';
       const facade = isTeal ? '#1A6175' : '#F2EBDD';
-      const windows = isTeal ? '#F7F1DC' : '#1A6175';
+      const windows = mixColor(isTeal ? '#F7F1DC' : '#1A6175', timeOfDay.palette.windowLight, timeOfDay.palette.windowGlow);
       const trim = '#0D303B';
       ctx.fillStyle = facade;
       ctx.fillRect(x, y, w, h);
@@ -988,6 +1224,14 @@
     }
 
     function drawBike() {
+      if (timeOfDay.palette.bikeHaloAlpha > .005) {
+        const bikeX = playLeft + bike.x;
+        const glow = ctx.createRadialGradient(bikeX, bike.y, 0, bikeX, bike.y, 54);
+        glow.addColorStop(0, rgbaColor('#FFF5D8', timeOfDay.palette.bikeHaloAlpha));
+        glow.addColorStop(1, rgbaColor('#FFF5D8', 0));
+        ctx.fillStyle = glow;
+        ctx.fillRect(bikeX - 54, bike.y - 54, 108, 108);
+      }
       ctx.save();
       ctx.translate(playLeft + bike.x, bike.y);
       ctx.rotate(bike.rotation);
@@ -1016,9 +1260,93 @@
       ctx.restore();
     }
 
-    function draw() {
+    const NIGHT_STARS = Array.from({ length: 42 }, (_, index) => {
+      const random = seed => {
+        const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+        return value - Math.floor(value);
+      };
+      return {
+        x: random(index + 1),
+        y: .04 + random(index + 101) * .58,
+        radius: .7 + random(index + 201) * 1.25,
+        twinkle: random(index + 301) * Math.PI * 2
+      };
+    });
+
+    function drawAmbientTint() {
+      const palette = timeOfDay.palette;
+      if (palette.ambientTintAlpha <= .005) return;
+      ctx.save();
+      ctx.globalAlpha = palette.ambientTintAlpha;
+      ctx.fillStyle = palette.ambientTint;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
+
+    function drawCelestialEffects(time) {
+      const palette = timeOfDay.palette;
+      const phase = TIME_OF_DAY_SETTINGS.phases[timeOfDay.phaseIndex];
+      const seaY = Math.max(groundY - 42, 0);
+
+      if (palette.sunAlpha > .01) {
+        const sunX = width * palette.sunX;
+        const sunY = phase.id === 'golden-hour'
+          ? groundY * .55 + (seaY + 8 - groundY * .55) * timeOfDay.phaseProgress
+          : groundY * palette.sunY;
+        const radius = Math.max(18, Math.min(34, width * .045));
+        const glow = ctx.createRadialGradient(sunX, sunY, radius * .4, sunX, sunY, radius * 3.2);
+        glow.addColorStop(0, rgbaColor(palette.sun, palette.sunAlpha * .34));
+        glow.addColorStop(1, rgbaColor(palette.sun, 0));
+        ctx.fillStyle = glow;
+        ctx.fillRect(sunX - radius * 3.2, sunY - radius * 3.2, radius * 6.4, radius * 6.4);
+        ctx.save();
+        ctx.globalAlpha = palette.sunAlpha;
+        ctx.fillStyle = palette.sun;
+        ctx.beginPath(); ctx.arc(sunX, sunY, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      if (palette.starsAlpha > .01) {
+        ctx.save();
+        ctx.fillStyle = '#FFF3C7';
+        for (const star of NIGHT_STARS) {
+          ctx.globalAlpha = palette.starsAlpha * (.7 + .3 * Math.sin(time * .002 + star.twinkle));
+          ctx.beginPath(); ctx.arc(star.x * width, star.y * groundY, star.radius, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (palette.moonAlpha > .01) {
+        const moonX = width * .77;
+        const moonY = height * .2;
+        const radius = Math.max(13, Math.min(20, width * .027));
+        ctx.save();
+        ctx.globalAlpha = palette.moonAlpha;
+        ctx.fillStyle = '#F4EFD6';
+        ctx.beginPath(); ctx.arc(moonX, moonY, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = palette.skyTop;
+        ctx.beginPath(); ctx.arc(moonX + radius * .48, moonY - radius * .2, radius * .82, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      if (palette.seaReflectionAlpha > .01) {
+        ctx.save();
+        const reflectionX = width * .77;
+        ctx.fillStyle = palette.seaReflection;
+        for (let row = 0; row < 7; row++) {
+          ctx.globalAlpha = palette.seaReflectionAlpha * (.58 + (row % 3) * .11);
+          const lineWidth = 18 + ((row * 17) % 29);
+          ctx.fillRect(reflectionX - lineWidth / 2, seaY + 7 + row * 4, lineWidth, 1.5);
+        }
+        ctx.restore();
+      }
+    }
+
+    function draw(time) {
       drawSky();
       drawBuildings();
+      drawAmbientTint();
+      drawCelestialEffects(time);
       drawBike();
     }
 
@@ -1026,7 +1354,8 @@
       const dt = Math.min((time - lastTime) / 1000 || 0, .035);
       lastTime = time;
       update(dt);
-      draw();
+      updateTimeOfDay(time, dt);
+      draw(time);
       requestAnimationFrame(frame);
     }
 
@@ -1042,6 +1371,11 @@
     window.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
     window.addEventListener('keydown', unlockAudio, { once: true });
     window.addEventListener('keydown', event => {
+      if (event.code === 'KeyN') {
+        event.preventDefault();
+        if (!event.repeat) jumpToNextTimeOfDayPhase();
+        return;
+      }
       if (event.code === 'KeyM') {
         event.preventDefault();
         if (!event.repeat) toggleMute();
