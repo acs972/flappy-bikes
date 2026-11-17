@@ -270,6 +270,26 @@
       preferredGroundClearancePx: 72
     };
 
+    // Image scenery only: groundY stays the game's existing collision/ground line.
+    // All layers share SCALE = max((height - groundY) / (526 - 92), height / 2000).
+    // Increase SKYLINE_SCALE_MULT for taller hotels; PARALLAX controls only scenery speed.
+    const IMAGE_BACKGROUND_SETTINGS = {
+      BOARDWALK_GROUND_IN_IMAGE: 92,
+      BOARDWALK_IMAGE_HEIGHT: 526,
+      SEA_IMAGE_HEIGHT: 190,
+      MIN_SCALE_HEIGHT_DIVISOR: 2000,
+      SKYLINE_SCALE_MULT: 1.0,
+      SEA_GROUND_OFFSET: 14,
+      SKYLINE_HORIZON_OVERLAP: 6,
+      PARALLAX: { skyline: .15, sea: .45, boardwalk: 1.0 },
+      NIGHT_AMOUNT: { midday: 0, 'golden-hour': .2, dusk: .6, night: 1, sunrise: 0, 'midday-return': 0 },
+      ASSETS: {
+        skyline: { day: './assets/skyline_day.png', night: './assets/skyline_night.png' },
+        sea: { day: './assets/sea.png', night: './assets/sea_night.png' },
+        boardwalk: { day: './assets/boardwalk_day.png', night: './assets/boardwalk_night.png' }
+      }
+    };
+
     // Time-of-day score thresholds are half-open ranges: start <= (score % cyclePoints) < end.
     // Tweak these palettes and thresholds to adjust the look without touching game mechanics.
     const TIME_OF_DAY_SETTINGS = {
@@ -608,6 +628,11 @@
     let width = 0, height = 0, playWidth = 0, playLeft = 0, groundY = 0, lastTime = 0;
     let groundScroll = 0;
     let skylineScroll = 0;
+    const imageBackground = {
+      sources: null, layers: null, cacheKey: '', status: 'loading',
+      scale: 0, horizonY: 0, dpr: 1, distanceScrolled: 0,
+      nightAmount: 0, nightFrom: 0, transition: null
+    };
     let state = 'start';
     let score = 0;
     let obstacles = [];
@@ -721,6 +746,144 @@
       timeOfDay.phaseProgress = .55;
     }
 
+    // Load one picture in the background; a missing picture quietly selects the drawn fallback.
+    function loadBackgroundImage(source) {
+      return new Promise((resolve, reject) => {
+        const picture = new Image();
+        picture.decoding = 'async';
+        picture.onload = () => resolve(picture);
+        picture.onerror = () => reject(new Error('Background image unavailable'));
+        picture.src = source;
+      });
+    }
+
+    // Request all six pictures together without pausing the game or its animation loop.
+    function preloadBackgroundImages() {
+      const requests = Object.entries(IMAGE_BACKGROUND_SETTINGS.ASSETS).flatMap(([layer, variants]) =>
+        Object.entries(variants).map(([variant, source]) =>
+          loadBackgroundImage(source).then(picture => ({ layer, variant, picture }))
+        )
+      );
+      Promise.all(requests).then(pictures => {
+        const sources = {};
+        for (const { layer, variant, picture } of pictures) {
+          if (!sources[layer]) sources[layer] = {};
+          sources[layer][variant] = picture;
+        }
+        imageBackground.sources = sources;
+        rebuildBackgroundTiles(Math.min(window.devicePixelRatio || 1, 3));
+      }).catch(() => {
+        imageBackground.sources = null;
+        imageBackground.layers = null;
+        imageBackground.cacheKey = '';
+        imageBackground.status = 'fallback';
+      });
+    }
+
+    // Make a crisp, uniformly scaled tile once; frames later copy these pixels at their native size.
+    function prescaleBackgroundImage(picture, scale, dpr) {
+      const tile = document.createElement('canvas');
+      tile.width = Math.max(1, Math.round(picture.naturalWidth * scale * dpr));
+      // Round only the tile width to whole device pixels, then use ONE scale for both axes.
+      // This keeps the artwork's proportions and makes adjacent tiles meet without a gap.
+      const pixelScale = tile.width / picture.naturalWidth;
+      const contentHeight = picture.naturalHeight * pixelScale;
+      tile.height = Math.max(1, Math.ceil(contentHeight));
+      const tileContext = tile.getContext('2d');
+      tileContext.imageSmoothingEnabled = true;
+      tileContext.imageSmoothingQuality = 'high';
+      tileContext.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
+      tileContext.drawImage(picture, 0, 0);
+      return { canvas: tile, pixelScale, contentHeight };
+    }
+
+    // Rebuild the six cached tiles after loading or a real size/DPR change, keeping the wall on groundY.
+    function rebuildBackgroundTiles(dpr) {
+      if (!imageBackground.sources || width <= 0 || height <= 0) return;
+      const settings = IMAGE_BACKGROUND_SETTINGS;
+      const cacheKey = [width, height, groundY, dpr, settings.SKYLINE_SCALE_MULT].join(':');
+      if (imageBackground.layers && imageBackground.cacheKey === cacheKey) return;
+      try {
+        const scale = Math.max(
+          (height - groundY) / (settings.BOARDWALK_IMAGE_HEIGHT - settings.BOARDWALK_GROUND_IN_IMAGE),
+          height / settings.MIN_SCALE_HEIGHT_DIVISOR
+        );
+        const horizonY = groundY - (settings.SEA_IMAGE_HEIGHT + settings.SEA_GROUND_OFFSET) * scale;
+        const layers = {};
+        for (const name of Object.keys(settings.ASSETS)) {
+          const sources = imageBackground.sources[name];
+          if (sources.day.naturalWidth !== sources.night.naturalWidth || sources.day.naturalHeight !== sources.night.naturalHeight) {
+            throw new Error('Background image pair must have matching dimensions');
+          }
+          const layerScale = scale * (name === 'skyline' ? settings.SKYLINE_SCALE_MULT : 1);
+          const day = prescaleBackgroundImage(sources.day, layerScale, dpr);
+          const night = prescaleBackgroundImage(sources.night, layerScale, dpr);
+          let topPixels;
+          if (name === 'boardwalk') {
+            topPixels = groundY * dpr - settings.BOARDWALK_GROUND_IN_IMAGE * day.pixelScale;
+          } else {
+            const bottomY = name === 'sea'
+              ? groundY - settings.SEA_GROUND_OFFSET * scale
+              : horizonY + settings.SKYLINE_HORIZON_OVERLAP * scale;
+            topPixels = bottomY * dpr - day.contentHeight;
+          }
+          layers[name] = { day: day.canvas, night: night.canvas, topPixels, speedFactor: settings.PARALLAX[name] };
+        }
+        Object.assign(imageBackground, { layers, scale, horizonY, dpr, cacheKey, status: 'ready' });
+      } catch (error) {
+        imageBackground.layers = null;
+        imageBackground.cacheKey = '';
+        imageBackground.status = 'fallback';
+      }
+    }
+
+    // Follow the existing phase and its two-second transition; this never changes the day/night clock.
+    function getBackgroundNightAmount(now) {
+      const phase = TIME_OF_DAY_SETTINGS.phases[timeOfDay.phaseIndex];
+      const target = IMAGE_BACKGROUND_SETTINGS.NIGHT_AMOUNT[phase.id] || 0;
+      if (imageBackground.transition !== timeOfDay.transition) {
+        imageBackground.nightFrom = imageBackground.nightAmount;
+        imageBackground.transition = timeOfDay.transition;
+      }
+      if (timeOfDay.transition) {
+        const progress = Math.max(0, Math.min(1, (now - timeOfDay.transition.startedAt) / TIME_OF_DAY_SETTINGS.transitionMs));
+        const blend = progress * progress * (3 - 2 * progress);
+        imageBackground.nightAmount = imageBackground.nightFrom + (target - imageBackground.nightFrom) * blend;
+      } else {
+        imageBackground.nightAmount = target;
+      }
+      return imageBackground.nightAmount;
+    }
+
+    // Repeat a cached day tile across the screen, then fade in its matching night tile at the same positions.
+    function drawTiledBackground(layer, nightAmount) {
+      const tileWidth = layer.day.width;
+      const offset = (imageBackground.distanceScrolled * layer.speedFactor * imageBackground.dpr) % tileWidth;
+      const startX = -Math.round(offset);
+      ctx.save();
+      // Cached canvases already include DPR: identity transform means no per-frame image scaling.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      for (let x = startX; x < canvas.width; x += tileWidth) {
+        ctx.drawImage(layer.day, x, layer.topPixels);
+      }
+      if (nightAmount >= .01) {
+        ctx.globalAlpha = nightAmount;
+        for (let x = startX; x < canvas.width; x += tileWidth) {
+          ctx.drawImage(layer.night, x, layer.topPixels);
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Paint the three illustrated layers from farthest to nearest, behind every obstacle and the bike.
+    function drawImageScenery(nightAmount) {
+      drawTiledBackground(imageBackground.layers.skyline, nightAmount);
+      drawTiledBackground(imageBackground.layers.sea, nightAmount);
+      drawTiledBackground(imageBackground.layers.boardwalk, nightAmount);
+    }
+
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
       const previousPlayWidth = playWidth;
@@ -751,6 +914,7 @@
           obstacle.gap *= verticalScale;
         }
       }
+      rebuildBackgroundTiles(dpr);
     }
 
     function resetBike() {
@@ -765,6 +929,7 @@
       score = 0;
       resetTimeOfDay(performance.now());
       skylineScroll = 0;
+      imageBackground.distanceScrolled = 0;
       obstacles = [];
       spawnTimer = .25;
       scoreEl.textContent = score;
@@ -819,6 +984,7 @@
     function update(dt) {
       if (state !== 'playing') return;
       const speed = Math.max(145, playWidth * .42);
+      imageBackground.distanceScrolled += speed * dt;
       // This offset is visual only; obstacle and collision logic stays unchanged.
       groundScroll = (groundScroll + speed * dt) % 360;
       // A smaller scroll speed makes the distant hotel row feel farther away.
@@ -855,7 +1021,7 @@
       if (hitGround || hitTop || hitBuilding) endGame();
     }
 
-    function drawSky() {
+    function drawSky(time, nightAmount) {
       const palette = timeOfDay.palette;
       const sky = ctx.createLinearGradient(0, 0, 0, groundY);
       sky.addColorStop(0, palette.skyTop);
@@ -866,8 +1032,17 @@
       // The hotel row sits far behind the riding path and sea horizon.
       const promenadeBottom = height - 24;
       const promenadeHeight = promenadeBottom - groundY;
-      const seaY = Math.max(groundY - 42, 0);
+      const seaY = imageBackground.layers ? imageBackground.horizonY : Math.max(groundY - 42, 0);
       drawSunriseGlow(seaY);
+      if (imageBackground.layers) {
+        drawCelestialEffects(time, seaY, false);
+        ctx.fillStyle = rgbaColor(palette.cloud, palette.cloudAlpha);
+        drawCloud(width * .16, height * .17, 1.1);
+        drawCloud(width * .83, height * .34, .78);
+        drawImageScenery(nightAmount);
+        return;
+      }
+      // The original canvas scenery stays available while images load, or if any image fails.
       drawHotelSkyline(seaY);
 
       ctx.fillStyle = rgbaColor(palette.cloud, palette.cloudAlpha);
@@ -1283,10 +1458,9 @@
       ctx.restore();
     }
 
-    function drawCelestialEffects(time) {
+    function drawCelestialEffects(time, seaY = Math.max(groundY - 42, 0), includeSeaReflections = true) {
       const palette = timeOfDay.palette;
       const phase = TIME_OF_DAY_SETTINGS.phases[timeOfDay.phaseIndex];
-      const seaY = Math.max(groundY - 42, 0);
 
       if (palette.sunAlpha > .01) {
         const sunX = width * palette.sunX;
@@ -1329,7 +1503,7 @@
         ctx.restore();
       }
 
-      if (palette.seaReflectionAlpha > .01) {
+      if (includeSeaReflections && palette.seaReflectionAlpha > .01) {
         ctx.save();
         const reflectionX = width * .77;
         ctx.fillStyle = palette.seaReflection;
@@ -1343,10 +1517,10 @@
     }
 
     function draw(time) {
-      drawSky();
+      drawSky(time, getBackgroundNightAmount(time));
       drawBuildings();
       drawAmbientTint();
-      drawCelestialEffects(time);
+      if (!imageBackground.layers) drawCelestialEffects(time);
       drawBike();
     }
 
@@ -1406,6 +1580,7 @@
     updateBestScoreDisplay();
     resize();
     requestAnimationFrame(frame);
+    preloadBackgroundImages();
   </script>
 </body>
 </html>
