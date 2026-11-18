@@ -208,6 +208,46 @@
       #game-over-screen .ride-promo { margin-top: 10px; font-size: 12px; }
       #game-over-screen .book-ride-button { margin-top: 6px; padding: 8px 12px; font-size: 14px; }
     }
+    /* Scroll within the visible viewport when the phone keyboard is open. */
+    .scroll-overlay {
+      position: fixed; inset: auto 0 auto; top: var(--panel-top, 0px);
+      height: var(--panel-height, 100dvh); overflow-y: auto;
+      display: flex; flex-direction: column; align-items: center;
+      padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      overscroll-behavior: contain; touch-action: pan-y;
+      scroll-padding: 20px;
+    }
+    .scroll-overlay > .card { flex: 0 0 auto; margin-block: auto; }
+    #leaderboard-screen { z-index: 4; background: rgba(204,227,236,.93); }
+    #leaderboard-screen h2 { font-size: clamp(24px, 7vw, 32px); line-height: 1.15; }
+    button.prompt { border: 0; cursor: pointer; }
+    .leaderboard-panel { margin-top: 18px; padding-top: 16px; border-top: 2px solid var(--sea-blue); color: var(--navy-teal); text-align: left; }
+    .leaderboard-panel h3 { margin: 0 0 8px; font: 600 17px/1.35 "Poppins", sans-serif; }
+    .leaderboard-note { margin: 10px 0; color: var(--teal); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+    .leaderboard-note.error { color: #9b3027; }
+    .leaderboard-panel label { display: block; margin-top: 10px; font-size: 14px; font-weight: 700; line-height: 1.4; }
+    .leaderboard-panel input {
+      width: 100%; min-height: 44px; margin-top: 5px; padding: 10px;
+      border: 2px solid var(--teal); border-radius: 10px; background: white;
+      color: var(--navy-teal); font: 16px/1.3 "Raleway", sans-serif;
+      user-select: text; -webkit-user-select: text; scroll-margin-block: 24px;
+    }
+    .leaderboard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .leaderboard-actions button { flex: 1; margin-top: 0; min-height: 44px; font-size: 14px; padding: 10px; }
+    .leaderboard-primary { background: var(--teal); color: white; }
+    button:disabled { opacity: .6; cursor: default; }
+    #leaderboard-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; text-align: left; color: var(--navy-teal); font-size: 15px; table-layout: fixed; }
+    #leaderboard-table th { font-size: 12px; padding: 6px; }
+    #leaderboard-table th:first-child { width: 48px; }
+    #leaderboard-table th:last-child { width: 62px; text-align: right; }
+    #leaderboard-table td { padding: 9px 6px; background: #edf6f8; overflow-wrap: anywhere; }
+    #leaderboard-table td:last-child { text-align: right; font-weight: 700; }
+    #leaderboard-table tr.own-entry td { background: #cdebe8; border-block: 2px solid var(--teal); }
+    .rank-medal { display: inline-grid; place-items: center; min-width: 30px; height: 30px; border-radius: 50%; font-weight: 700; }
+    .rank-1 { background: #f5cf64; color: #503900; }
+    .rank-2 { background: #dbe3e9; color: #33434e; }
+    .rank-3 { background: #e7b28a; color: #5c3217; }
+    [data-game-ui] :focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
     .hidden { display: none; }
   </style>
 </head>
@@ -240,20 +280,53 @@
         <p class="subtitle">by Yalla Bikes Tel Aviv</p>
         <div class="prompt">Press Space or tap to start</div>
         <p class="tip">Keep hopping to fly through the city.</p>
+        <button class="share-button" id="start-leaderboard-button" type="button" data-game-ui>Leaderboard</button>
       </div>
     </section>
 
-    <section class="overlay hidden" id="game-over-screen">
-      <div class="card">
+    <section class="overlay scroll-overlay hidden" id="game-over-screen">
+      <div class="card" data-game-ui>
         <h2>Bike bonk!</h2>
         <p class="subtitle">Score: <span id="final-score">0</span> &nbsp;·&nbsp; Best: <span id="final-best-score">0</span></p>
         <p class="new-high-score hidden" id="new-high-score">New high score!</p>
-        <div class="prompt">Press Space or tap to play again</div>
+        <button class="prompt" id="restart-button" type="button">Press Space or tap to play again</button>
+        <section class="leaderboard-panel" aria-label="Leaderboard submission">
+          <p class="leaderboard-note" id="run-leaderboard-status" role="status"></p>
+          <form id="leaderboard-form" class="hidden">
+            <h3>Submit to the leaderboard</h3>
+            <label for="leaderboard-nickname">Nickname (2–12 characters)</label>
+            <input id="leaderboard-nickname" name="nickname" minlength="2" maxlength="12" required autocomplete="nickname" dir="auto" />
+            <label for="leaderboard-contact">Instagram or phone (only Yalla Bikes sees this, to contact the winner)</label>
+            <input id="leaderboard-contact" name="contact" maxlength="40" required autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="remember-contact-note" />
+            <p class="leaderboard-note" id="remember-contact-note">These details are remembered on this device.</p>
+            <div class="leaderboard-actions">
+              <button class="share-button leaderboard-primary" id="submit-score-button" type="submit">Submit</button>
+              <button class="share-button" id="skip-score-button" type="button">Skip</button>
+            </div>
+          </form>
+          <button class="share-button" id="game-over-leaderboard-button" type="button">Leaderboard</button>
+        </section>
         <button class="share-button" id="share-button" type="button">Share score</button>
         <p class="tip">One more ride?</p>
         <div class="ride-promo">
           <div>Loved the ride? Do it for real in Tel Aviv!</div>
           <a class="book-ride-button" id="book-ride-button" href="https://yallabikestlv.com" target="_blank" rel="noopener">Book a Yalla Bikes ride 🚲</a>
+        </div>
+      </div>
+    </section>
+    <section class="overlay scroll-overlay hidden" id="leaderboard-screen" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title" data-game-ui>
+      <div class="card">
+        <h2 id="leaderboard-title">Leaderboard</h2>
+        <p class="leaderboard-note" id="leaderboard-status" role="status"></p>
+        <table id="leaderboard-table" class="hidden" aria-label="Top 10 riders">
+          <thead><tr><th scope="col">Rank</th><th scope="col">Nickname</th><th scope="col">Score</th></tr></thead>
+          <tbody id="leaderboard-rows"></tbody>
+        </table>
+        <p class="leaderboard-note" id="leaderboard-own-note"></p>
+        <div class="leaderboard-actions">
+          <button class="share-button" id="leaderboard-refresh" type="button">Refresh</button>
+          <button class="share-button" id="leaderboard-close" type="button">Back</button>
+          <button class="share-button leaderboard-primary" id="leaderboard-play" type="button">Play again</button>
         </div>
       </div>
     </section>
@@ -392,6 +465,270 @@
     const mutedIcon = document.getElementById('muted-icon');
     const shareButton = document.getElementById('share-button');
     const bookRideButton = document.getElementById('book-ride-button');
+
+    const leaderboardUI = {
+      screen: document.getElementById('leaderboard-screen'),
+      form: document.getElementById('leaderboard-form'),
+      nickname: document.getElementById('leaderboard-nickname'),
+      contact: document.getElementById('leaderboard-contact'),
+      submit: document.getElementById('submit-score-button'),
+      skip: document.getElementById('skip-score-button'),
+      runStatus: document.getElementById('run-leaderboard-status'),
+      status: document.getElementById('leaderboard-status'),
+      table: document.getElementById('leaderboard-table'),
+      rows: document.getElementById('leaderboard-rows'),
+      ownNote: document.getElementById('leaderboard-own-note'),
+      refresh: document.getElementById('leaderboard-refresh'),
+      close: document.getElementById('leaderboard-close'),
+      play: document.getElementById('leaderboard-play')
+    };
+    const LEADERBOARD_PROFILE_KEY = 'flappy-bikes-leaderboard-profile';
+    let leaderboardRun = null;
+    let leaderboardViewVersion = 0;
+    let leaderboardReturnFocus = null;
+
+    // Keep personal details on this device; blocked storage must never stop the game.
+    function restoreLeaderboardProfile() {
+      try {
+        const profile = JSON.parse(localStorage.getItem(LEADERBOARD_PROFILE_KEY) || '{}');
+        leaderboardUI.nickname.value = typeof profile.nickname === 'string' ? profile.nickname.slice(0, 12) : '';
+        leaderboardUI.contact.value = typeof profile.contact === 'string' ? profile.contact.slice(0, 40) : '';
+      } catch (_) { /* Inputs still work without storage. */ }
+    }
+
+    function rememberLeaderboardProfile() {
+      try {
+        localStorage.setItem(LEADERBOARD_PROFILE_KEY, JSON.stringify({
+          nickname: leaderboardUI.nickname.value, contact: leaderboardUI.contact.value
+        }));
+      } catch (_) { /* Remember for this page visit through the inputs themselves. */ }
+    }
+
+    // Network work has a deadline and never runs inside the animation loop.
+    async function leaderboardRequest(endpoint, body) {
+      if (!/^https?:$/.test(location.protocol)) throw new Error('Leaderboard is available on the hosted game. You can still play here.');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch('/.netlify/functions/' + endpoint, {
+          method: body === undefined ? 'GET' : 'POST', cache: 'no-store', signal: controller.signal,
+          ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        });
+        let data;
+        try { data = await response.json(); }
+        catch (_) { throw new Error('The leaderboard is unavailable right now. Please try again later.'); }
+        if (!response.ok) {
+          const error = new Error(typeof data?.error === 'string' ? data.error : 'The leaderboard could not complete that request.');
+          error.status = response.status;
+          throw error;
+        }
+        return data;
+      } catch (error) {
+        if (error.name === 'AbortError' || error instanceof TypeError) {
+          throw new Error('Could not reach the leaderboard. Check your connection.');
+        }
+        throw error;
+      } finally { clearTimeout(timeout); }
+    }
+
+    // Every run owns its request, token, and final score; late replies cannot affect a new run.
+    function beginLeaderboardRun() {
+      closeLeaderboard(false);
+      document.activeElement?.blur();
+      const run = { token: null, tokenPending: true, tokenError: '', score: null, board: null,
+        boardError: '', boardVersion: 0, attempted: false, skipped: false, sending: false, message: '', messageError: false };
+      leaderboardRun = run;
+      leaderboardUI.form.classList.add('hidden');
+      leaderboardUI.runStatus.textContent = '';
+      leaderboardRequest('start-run', {}).then(data => {
+        if (typeof data?.token !== 'string' || !data.token) throw new Error('A run token was not available. Please play another run.');
+        run.token = data.token;
+      }).catch(error => { run.tokenError = error.message; }).finally(() => {
+        run.tokenPending = false;
+        renderRunLeaderboard(run);
+      });
+    }
+
+    function contestMessage(data) {
+      const window = data.contest;
+      if (window.status === 'not started') {
+        return 'The contest has not started yet.' + (window.start ? ' Starts ' + new Date(window.start).toLocaleString() + '.' : '');
+      }
+      if (window.status === 'ended') {
+        const winner = data.top10[0];
+        return 'The contest has ended.' + (winner ? ` Winner: ${winner.nickname} · ${winner.score} points (subject to verification).` : ' No scores were submitted.');
+      }
+      return 'Win a free day on 2 bikes!';
+    }
+
+    async function fetchLeaderboard() {
+      const data = await leaderboardRequest('leaderboard');
+      if (!data?.contest || !['not started', 'open', 'ended'].includes(data.contest.status) || !Array.isArray(data.top10)) {
+        throw new Error('The leaderboard response was incomplete. Please try again later.');
+      }
+      return data;
+    }
+
+    // Refresh contest status at game over rather than trusting an old open/closed result.
+    async function loadRunLeaderboard(run) {
+      const version = ++run.boardVersion;
+      try {
+        const board = await fetchLeaderboard();
+        if (version !== run.boardVersion) return;
+        run.board = board;
+        run.boardError = '';
+      } catch (error) {
+        if (version !== run.boardVersion) return;
+        run.boardError = error.message;
+      }
+      renderRunLeaderboard(run);
+    }
+
+    function renderRunLeaderboard(run) {
+      if (leaderboardRun !== run || state !== 'gameover') return;
+      const ui = leaderboardUI;
+      const open = run.board?.contest.status === 'open';
+      ui.form.classList.toggle('hidden', !open || run.score < 1 || run.skipped || run.attempted);
+      ui.submit.disabled = !run.token || run.tokenPending || run.sending;
+      ui.skip.disabled = run.sending;
+      ui.runStatus.classList.toggle('error', run.message ? run.messageError : !!(run.boardError || (open && run.tokenError)));
+      if (run.board && !open) ui.runStatus.textContent = contestMessage(run.board) + (run.message ? ' ' + run.message : '');
+      else if (run.message) ui.runStatus.textContent = run.message;
+      else if (run.boardError) ui.runStatus.textContent = run.boardError;
+      else if (!run.board) ui.runStatus.textContent = 'Checking the contest…';
+      else if (run.score < 1) ui.runStatus.textContent = 'Score at least 1 to enter the leaderboard.';
+      else if (run.skipped) ui.runStatus.textContent = 'Submission skipped. Ready for another ride?';
+      else if (run.tokenPending) ui.runStatus.textContent = 'Getting your run ready for submission…';
+      else if (run.tokenError) ui.runStatus.textContent = run.tokenError + ' This run cannot be submitted.';
+      else ui.runStatus.textContent = contestMessage(run.board);
+    }
+
+    // A single POST per run, including ambiguous timeouts; never retry a used token automatically.
+    async function submitLeaderboardScore(event) {
+      event.preventDefault();
+      const run = leaderboardRun;
+      if (!run || state !== 'gameover' || run.attempted || run.skipped || !run.token || run.score < 1 || run.board?.contest.status !== 'open') return;
+      const nickname = leaderboardUI.nickname.value.normalize('NFKC').trim().replace(/ +/g, ' ');
+      const contact = leaderboardUI.contact.value.normalize('NFKC').trim();
+      if (Array.from(nickname).length < 2 || Array.from(nickname).length > 12 || !contact || Array.from(contact).length > 40) {
+        run.message = 'Enter a nickname of 2–12 characters and an Instagram handle or phone number (up to 40 characters).';
+        run.messageError = true;
+        renderRunLeaderboard(run);
+        return;
+      }
+      leaderboardUI.nickname.value = nickname;
+      leaderboardUI.contact.value = contact;
+      rememberLeaderboardProfile();
+      run.attempted = true;
+      run.sending = true;
+      run.messageError = false;
+      run.message = 'Submitting your score…';
+      renderRunLeaderboard(run);
+      try {
+        await leaderboardRequest('submit-score', { token: run.token, score: run.score, nickname, contact });
+        run.message = 'Score saved! Your best score counts.';
+        if (leaderboardRun === run && state === 'gameover') openLeaderboard(run.message);
+      } catch (error) {
+        run.message = error.message + ' You can check the leaderboard or play another run to submit again.';
+        run.messageError = true;
+        if (error.status === 403 && leaderboardRun === run) void loadRunLeaderboard(run);
+      } finally {
+        run.sending = false;
+        run.token = null;
+        renderRunLeaderboard(run);
+      }
+    }
+
+    // Only textContent is used for server-provided nicknames and messages.
+    function renderLeaderboard(data) {
+      const ui = leaderboardUI;
+      ui.rows.replaceChildren();
+      const nickname = leaderboardUI.nickname.value.normalize('NFKC').trim().replace(/ +/g, ' ').toLowerCase();
+      const matches = data.top10.filter(entry => typeof entry.nickname === 'string' && entry.nickname.toLowerCase() === nickname);
+      ui.ownNote.textContent = matches.length === 1 ? 'Your nickname is highlighted.'
+        : matches.length > 1 ? 'More than one rider uses your nickname, so your entry cannot be identified here.' : '';
+      for (const entry of data.top10.slice(0, 10)) {
+        const row = document.createElement('tr');
+        if (matches.length === 1 && entry === matches[0]) row.classList.add('own-entry');
+        const rank = document.createElement('td');
+        const medal = document.createElement('span');
+        medal.className = 'rank-medal' + ([1, 2, 3].includes(entry.rank) ? ' rank-' + entry.rank : '');
+        medal.textContent = entry.rank;
+        rank.append(medal);
+        const name = document.createElement('td');
+        const label = document.createElement('bdi');
+        label.textContent = entry.nickname;
+        name.append(label);
+        const points = document.createElement('td');
+        points.textContent = entry.score;
+        row.append(rank, name, points);
+        ui.rows.append(row);
+      }
+      ui.table.classList.toggle('hidden', data.top10.length === 0);
+    }
+
+    async function refreshLeaderboard(notice = '') {
+      const version = ++leaderboardViewVersion;
+      const run = leaderboardRun;
+      leaderboardUI.status.classList.remove('error');
+      leaderboardUI.status.textContent = notice ? notice + ' Loading the Top 10…' : 'Loading the Top 10…';
+      leaderboardUI.refresh.disabled = true;
+      leaderboardUI.table.classList.add('hidden');
+      leaderboardUI.ownNote.textContent = '';
+      try {
+        const data = await fetchLeaderboard();
+        if (version !== leaderboardViewVersion) return;
+        renderLeaderboard(data);
+        leaderboardUI.status.textContent = (notice ? notice + ' ' : '') + contestMessage(data)
+          + (data.top10.length === 0 && data.contest.status === 'open' ? ' No scores yet. Be the first!' : '');
+        if (run && leaderboardRun === run) {
+          ++run.boardVersion;
+          run.board = data;
+          run.boardError = '';
+          renderRunLeaderboard(run);
+        }
+      } catch (error) {
+        if (version !== leaderboardViewVersion) return;
+        leaderboardUI.status.textContent = (notice ? notice + ' ' : '') + error.message;
+        leaderboardUI.status.classList.add('error');
+      } finally {
+        if (version === leaderboardViewVersion) leaderboardUI.refresh.disabled = false;
+      }
+    }
+
+    function openLeaderboard(notice = '') {
+      if (state === 'playing') return;
+      if (leaderboardUI.screen.classList.contains('hidden')) leaderboardReturnFocus = document.activeElement;
+      leaderboardUI.screen.classList.remove('hidden');
+      startScreen.inert = true;
+      gameOverScreen.inert = true;
+      document.querySelector('.hud').inert = true;
+      leaderboardUI.play.textContent = state === 'start' ? 'Play' : 'Play again';
+      leaderboardUI.close.focus({ preventScroll: true });
+      leaderboardUI.screen.scrollTop = 0;
+      void refreshLeaderboard(notice);
+    }
+
+    function closeLeaderboard(restoreFocus = true) {
+      ++leaderboardViewVersion;
+      leaderboardUI.screen.classList.add('hidden');
+      startScreen.inert = false;
+      gameOverScreen.inert = false;
+      document.querySelector('.hud').inert = false;
+      if (restoreFocus && leaderboardReturnFocus?.isConnected && leaderboardReturnFocus.getClientRects().length) {
+        leaderboardReturnFocus.focus({ preventScroll: true });
+      }
+    }
+
+    // Follow the keyboard's visible area without changing canvas sizing or physics.
+    function sizeLeaderboardPanels() {
+      const viewport = window.visualViewport;
+      document.documentElement.style.setProperty('--panel-height', (viewport?.height || innerHeight) + 'px');
+      document.documentElement.style.setProperty('--panel-top', (viewport?.offsetTop || 0) + 'px');
+      if (leaderboardUI.form.contains(document.activeElement)) {
+        document.activeElement.scrollIntoView({ block: 'nearest' });
+      }
+    }
 
     // localStorage can be disabled in some browsers, so all access is safely guarded.
     const HIGH_SCORE_KEY = 'flappy-bikes-high-score';
@@ -938,6 +1275,7 @@
       resetBike();
       updateBestScoreDisplay();
       hop();
+      beginLeaderboardRun();
     }
 
     function endGame() {
@@ -954,6 +1292,12 @@
       gameOverScreen.classList.remove('hidden');
       playSound('crash');
       if (isNewHighScore) playSound('new-high-score');
+      gameOverScreen.scrollTop = 0;
+      if (leaderboardRun) {
+        leaderboardRun.score = score;
+        renderRunLeaderboard(leaderboardRun);
+        void loadRunLeaderboard(leaderboardRun);
+      }
     }
 
     function hop() {
@@ -1545,6 +1889,17 @@
     window.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
     window.addEventListener('keydown', unlockAudio, { once: true });
     window.addEventListener('keydown', event => {
+      if (!leaderboardUI.screen.classList.contains('hidden')) {
+        if (event.key === 'Escape') { event.preventDefault(); closeLeaderboard(); }
+        if (event.key === 'Tab') {
+          const controls = [...leaderboardUI.screen.querySelectorAll('button:not(:disabled)')];
+          const first = controls[0], last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+        return;
+      }
+      if (event.target.closest?.('input, textarea, select, button, a, [contenteditable], [data-game-ui]')) return;
       if (event.code === 'KeyN') {
         event.preventDefault();
         if (!event.repeat) jumpToNextTimeOfDayPhase();
@@ -1574,7 +1929,33 @@
     });
     bookRideButton.addEventListener('pointerdown', event => event.stopPropagation());
     bookRideButton.addEventListener('click', event => event.stopPropagation());
-    stage.addEventListener('pointerdown', event => { event.preventDefault(); hop(); });
+    stage.addEventListener('pointerdown', event => {
+      if (!leaderboardUI.screen.classList.contains('hidden') || event.target.closest?.('[data-game-ui], button, a, input, textarea, select, [contenteditable]')) return;
+      event.preventDefault(); hop();
+    });
+
+    document.getElementById('start-leaderboard-button').addEventListener('click', () => openLeaderboard());
+    document.getElementById('game-over-leaderboard-button').addEventListener('click', () => openLeaderboard());
+    document.getElementById('restart-button').addEventListener('click', startGame);
+    leaderboardUI.play.addEventListener('click', startGame);
+    leaderboardUI.close.addEventListener('click', () => closeLeaderboard());
+    leaderboardUI.refresh.addEventListener('click', () => { void refreshLeaderboard(); });
+    leaderboardUI.form.addEventListener('submit', submitLeaderboardScore);
+    leaderboardUI.skip.addEventListener('click', () => {
+      const run = leaderboardRun;
+      if (!run || run.sending) return;
+      run.skipped = true;
+      run.token = null;
+      rememberLeaderboardProfile();
+      renderRunLeaderboard(run);
+      openLeaderboard();
+    });
+    leaderboardUI.form.addEventListener('input', rememberLeaderboardProfile);
+    window.addEventListener('resize', sizeLeaderboardPanels);
+    window.visualViewport?.addEventListener('resize', sizeLeaderboardPanels);
+    window.visualViewport?.addEventListener('scroll', sizeLeaderboardPanels);
+    restoreLeaderboardProfile();
+    sizeLeaderboardPanels();
 
     updateMuteButton();
     updateBestScoreDisplay();
