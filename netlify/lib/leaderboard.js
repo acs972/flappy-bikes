@@ -200,24 +200,6 @@ export async function reserveSubmission(store, visitor, runId) {
   throw new ApiError(503, 'Several submissions arrived together. Please try again shortly.');
 }
 
-// Immutable accepted-run records are also the used-token records. One atomic write
-// saves a score AND consumes its token, with no crash gap between those operations.
-// Deriving personal bests from this journal avoids lost updates to a shared Top 10.
-export async function bestScores(store, contestId) {
-  const best = new Map();
-  for await (const page of store.list({ prefix: `runs/${contestId}/`, paginate: true })) {
-    for (let offset = 0; offset < page.blobs.length; offset += 16) {
-      const records = await Promise.all(page.blobs.slice(offset, offset + 16).map(blob => store.get(blob.key, { type: 'json' })));
-      for (const record of records) {
-        if (!record) continue;
-        const previous = best.get(record.playerId);
-        if (!previous || compareScores(record, previous) < 0) best.set(record.playerId, record);
-      }
-    }
-  }
-  return [...best.values()].sort(compareScores);
-}
-
 export function compareScores(a, b) {
   return b.score - a.score || a.submittedAt - b.submittedAt || a.runId.localeCompare(b.runId);
 }

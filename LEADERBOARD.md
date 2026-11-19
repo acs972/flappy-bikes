@@ -8,12 +8,22 @@ The game calls the public endpoints below. The separate admin page is for the or
   `startedAt`, and `expiresAt`. Call when the player starts, not after finishing.
 - **POST `/.netlify/functions/submit-score`**: checks and saves
   `{ token, score, nickname, contact }` as JSON.
-- **GET `/.netlify/functions/leaderboard`**: returns
+- **GET `/.netlify/functions/leaderboard?period=daily|weekly|alltime`**: returns
   `contest: { status, start, end }` and
-  `top10: [{ rank, nickname, score }]`. Status is `not started`, `open`, or
+  `period`, `winner` (All Time winner when ended, otherwise null), and
+  `top10: [{ rank, nickname, score, playerId }]`. The public player ID is a one-way
+  identifier used for highlighting, not a contact. Status is `not started`, `open`, or
   `ended`. No public endpoint returns contact information.
 
-Each nickname/contact pair gets one leaderboard entry: its best score.
+The default period is `alltime`. Daily means today in Israel; Weekly starts on
+Sunday in Israel (`Asia/Jerusalem`, including daylight saving changes). All Time
+is limited to the configured contest window and decides the prize winner.
+Each nickname/contact pair gets one entry per period: its best score in that period.
+An older high score does not hide a lower score submitted today. Existing runs
+are included automatically using their original submission times; no migration
+or reset is needed. The submit response also returns the public `playerId`, so
+the browser can highlight the correct rider even when nicknames are shared.
+Devices that have not submitted since this update still use nickname matching.
 Ties go to the earliest server submission. Letter case, Instagram's `@`,
 and phone formatting are ignored when identifying a pair.
 
@@ -52,9 +62,15 @@ up to 40 characters; phones need 7–15 digits. Ownership is not verified.
 
 All data is in the private **leaderboard** Blobs store. Netlify supplies access
 automatically. One atomic write saves each accepted run and consumes its ID.
-Ranking reads these records and selects each player's best, so simultaneous
-submissions cannot overwrite a better score. Larger campaigns should add a
-ranking index/database because ranking currently reads the contest's full journal.
+Ranking selects each player's best after filtering by period, so simultaneous
+submissions cannot overwrite a better score. A private `ranking-cache/` snapshot
+reuses unchanged records by their storage ETags. Requests list journal versions
+and download only new or changed records; the first request builds the cache
+from older runs. The cache contains no contacts. Admin reads contacts only for
+the selected top 50. Deletes and resets are detected from journal versions, so
+there is no separate score-index write that could lose an accepted submission.
+Listing and ranking still grow with the number of runs; very large campaigns
+should move to an indexed database. This is not a constant-time database index.
 
 Limits are one submission per 20 seconds and 30 per UTC day, using a secret-keyed
 IP hash. No raw IPs are stored by this code. Shared Wi-Fi shares a limit.
@@ -135,7 +151,7 @@ every run by that person, and does not ban them from submitting future runs.
 
 ### Reset for a fresh contest
 
-Reset permanently deletes **all** score and used-run records, including old
+Reset permanently deletes **all** score and used-run records and ranking caches, including old
 contest groups and deletion markers. It preserves visitor rate limits and admin
 login lockouts. It does not change contest dates or environment variables.
 
@@ -164,5 +180,26 @@ passwords into URLs or shared command histories.
 - `POST /.netlify/functions/admin` with JSON `{ "action": "reset", "confirm": "RESET" }`.
 
 Admin responses use `Cache-Control: no-store`. Contacts are only returned by this
-authenticated endpoint; the public API has not changed. Use a separate Netlify
+authenticated endpoint. Use a separate Netlify
 site for testing because previews of the same site share production Blobs.
+
+## Checking the three boards
+
+1. Deploy to a separate test Netlify site, or use Netlify Dev. Opening the HTML
+   file directly cannot call Functions. Keep the contest dates unchanged when
+   checking existing scores, since changing dates selects a different contest.
+2. Open Leaderboard: All Time should be selected and marked Prize board. Tap
+   Daily and Weekly, including quickly switching while a request is loading.
+3. Submit different runs with the same nickname and contact (wait at least
+   20 seconds between submissions). Each board should show one best score for
+   that pair. Your entry should be highlighted after a successful submission.
+4. With scores from earlier days, confirm today's board uses only today's runs
+   and Weekly uses only runs since Sunday in Israel. Check around Israel midnight
+   and Saturday-to-Sunday midnight; the browser's local timezone should not matter.
+5. Open the private admin page and compare each period with the public board.
+   Delete a test run and refresh every affected tab. A remaining lower score may
+   appear. Only on the test site, follow the reset instructions above and confirm
+   all three boards become empty.
+6. Inspect the public endpoint responses: no contact fields should appear.
+   After the contest ends, every tab's winner message must name All Time #1,
+   even if today's board is empty or has a different leader.

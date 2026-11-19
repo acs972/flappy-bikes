@@ -1,12 +1,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { ApiError, compareScores, contest, failure, json, keyedHash, readSubmission, storage } from '../lib/leaderboard.js';
+import { ApiError, contest, failure, json, keyedHash, readSubmission, storage } from '../lib/leaderboard.js';
+
+import { rankingRecords, rankPeriod, requestedPeriod } from '../lib/rankings.js';
 
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const FAILURE_LIMIT = 5;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const israelDate = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
-});
 const israelTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jerusalem', year: 'numeric', month: 'short', day: 'numeric',
   hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
@@ -46,40 +45,6 @@ async function authenticate(request, context, store) {
   throw new ApiError(429, 'Too many login attempts. Please try again later.', { 'Retry-After': '900' });
 }
 
-// Compare Israel calendar dates, not fixed 24-hour durations, so DST is handled correctly.
-function israelDay(timestamp) {
-  const parts = Object.fromEntries(israelDate.formatToParts(timestamp).map(part => [part.type, part.value]));
-  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / 86_400_000;
-}
-
-async function rankedEntries(store, contestId, period, now) {
-  const today = israelDay(now);
-  const weekStart = today - new Date(today * 86_400_000).getUTCDay(); // Sunday in Israel.
-  const best = new Map();
-  for await (const page of store.list({ prefix: `runs/${contestId}/`, paginate: true })) {
-    for (let offset = 0; offset < page.blobs.length; offset += 16) {
-      const records = await Promise.all(page.blobs.slice(offset, offset + 16).map(blob => store.get(blob.key, { type: 'json' })));
-      for (const record of records) {
-        if (!record || !Number.isFinite(record.submittedAt) || record.submittedAt > now) continue;
-        const day = israelDay(record.submittedAt);
-        if (period === 'daily' && day !== today) continue;
-        if (period === 'weekly' && (day < weekStart || day > today)) continue;
-        const previous = best.get(record.playerId);
-        if (!previous || compareScores(record, previous) < 0) best.set(record.playerId, record);
-      }
-    }
-  }
-  const sorted = [...best.values()].sort(compareScores);
-  return {
-    totalPlayers: sorted.length,
-    entries: sorted.slice(0, 50).map((record, index) => ({
-      id: record.runId, rank: index + 1, nickname: record.nickname, score: record.score,
-      contact: record.contact, submittedAt: new Date(record.submittedAt).toISOString(),
-      submittedAtIsrael: israelTime.format(record.submittedAt),
-    })),
-  };
-}
-
 // A null record is ignored by the existing public ranking but still counts as a
 // used token. This removes the private details without allowing the deleted run back in.
 async function deleteEntry(store, contestId, id) {
@@ -94,11 +59,12 @@ async function deleteEntry(store, contestId, id) {
 // Take a key snapshot before deletion to avoid skipping pages as the list shrinks.
 // Only score/used-run records are wiped; admin lockouts and visitor rate limits remain.
 async function resetEntries(store) {
-  const { blobs } = await store.list({ prefix: 'runs/' });
+  const [runs, caches] = await Promise.all([store.list({ prefix: 'runs/' }), store.list({ prefix: 'ranking-cache/' })]);
+  const blobs = [...runs.blobs, ...caches.blobs];
   for (let offset = 0; offset < blobs.length; offset += 16) {
     await Promise.all(blobs.slice(offset, offset + 16).map(blob => store.delete(blob.key)));
   }
-  return blobs.length;
+  return runs.blobs.length;
 }
 
 export default async function handler(request, context) {
@@ -108,9 +74,19 @@ export default async function handler(request, context) {
     await authenticate(request, context, store);
     const window = contest();
     if (request.method === 'GET') {
-      const period = new URL(request.url).searchParams.get('period') || 'alltime';
-      if (!['daily', 'weekly', 'alltime'].includes(period)) throw new ApiError(400, 'Choose daily, weekly, or alltime.');
-      const ranking = await rankedEntries(store, window.id, period, Date.now());
+      const period = requestedPeriod(request);
+
+      const records = await rankingRecords(store, window.id);
+      const sorted = rankPeriod(records, window, period);
+      // Contacts are read only after authentication and are never put in the ranking cache.
+      const entries = await Promise.all(sorted.slice(0, 50).map(async (record, index) => {
+        const current = await store.get(`runs/${window.id}/${record.runId}`, { type: 'json' });
+        if (!current) return null;
+        return { id: record.runId, rank: index + 1, nickname: record.nickname, score: record.score,
+          contact: current.contact, submittedAt: new Date(record.submittedAt).toISOString(),
+          submittedAtIsrael: israelTime.format(record.submittedAt) };
+      }));
+      const ranking = { totalPlayers: sorted.length, entries: entries.filter(Boolean) };
       return json({
         period, timezone: 'Asia/Jerusalem',
         contest: { status: window.status, start: window.start, end: window.end,

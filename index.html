@@ -236,6 +236,10 @@
     .leaderboard-actions button { flex: 1; margin-top: 0; min-height: 44px; font-size: 14px; padding: 10px; }
     .leaderboard-primary { background: var(--teal); color: white; }
     button:disabled { opacity: .6; cursor: default; }
+    .leaderboard-tabs { display: flex; gap: 6px; margin: 10px 0; }
+    .leaderboard-tabs button { flex: 1; min-width: 0; min-height: 48px; padding: 7px 4px; border: 2px solid var(--teal); border-radius: 12px; background: #edf6f8; color: var(--navy-teal); font: inherit; font-size: 14px; cursor: pointer; }
+    .leaderboard-tabs button[aria-pressed="true"] { background: var(--navy-teal); color: white; }
+    .leaderboard-tabs small { display: block; font-size: 10px; margin-top: 2px; }
     #leaderboard-table { width: 100%; border-collapse: separate; border-spacing: 0 5px; text-align: left; color: var(--navy-teal); font-size: 15px; table-layout: fixed; }
     #leaderboard-table th { font-size: 12px; padding: 6px; }
     #leaderboard-table th:first-child { width: 48px; }
@@ -351,6 +355,11 @@
       <div class="card">
         <h2 id="leaderboard-title">Leaderboard</h2>
         <p class="contest-countdown" id="leaderboard-contest-status" role="status"></p>
+        <div class="leaderboard-tabs" role="group" aria-label="Leaderboard period">
+          <button type="button" data-leaderboard-period="daily" aria-pressed="false">Daily</button>
+          <button type="button" data-leaderboard-period="weekly" aria-pressed="false">Weekly</button>
+          <button type="button" data-leaderboard-period="alltime" aria-pressed="true">All Time<small>Prize board</small></button>
+        </div>
         <p class="leaderboard-note" id="leaderboard-status" role="status"></p>
         <table id="leaderboard-table" class="hidden" aria-label="Top 10 riders">
           <thead><tr><th scope="col">Rank</th><th scope="col">Nickname</th><th scope="col">Score</th></tr></thead>
@@ -519,6 +528,8 @@
     const LEADERBOARD_PROFILE_KEY = 'flappy-bikes-leaderboard-profile';
     let leaderboardRun = null;
     let leaderboardViewVersion = 0;
+    let leaderboardPeriod = 'alltime';
+    let leaderboardIdentity = null;
     let leaderboardReturnFocus = null;
     let editingLeaderboardPlayer = false;
     let contestSnapshot = null;
@@ -587,6 +598,7 @@
     function restoreLeaderboardProfile() {
       try {
         const profile = JSON.parse(localStorage.getItem(LEADERBOARD_PROFILE_KEY) || '{}');
+        leaderboardIdentity = profile.identity || null;
         leaderboardUI.nickname.value = typeof profile.nickname === 'string' ? profile.nickname.slice(0, 12) : '';
         leaderboardUI.contact.value = typeof profile.contact === 'string' ? profile.contact.slice(0, 40) : '';
       } catch (_) { /* Inputs still work without storage. */ }
@@ -595,7 +607,7 @@
     function rememberLeaderboardProfile() {
       try {
         localStorage.setItem(LEADERBOARD_PROFILE_KEY, JSON.stringify({
-          nickname: leaderboardUI.nickname.value, contact: leaderboardUI.contact.value
+          nickname: leaderboardUI.nickname.value, contact: leaderboardUI.contact.value, identity: leaderboardIdentity
         }));
       } catch (_) { /* Remember for this page visit through the inputs themselves. */ }
     }
@@ -649,7 +661,7 @@
     function contestMessage(data) {
       const window = data.contest;
       if (window.status === 'ended') {
-        const winner = data.top10[0];
+        const winner = 'winner' in data ? data.winner : data.top10[0];
         return winner ? `Contest ended! Winner: ${winner.nickname} with ${winner.score}` : 'Contest ended! No scores were submitted.';
       }
       if (contestHasEnded(data)) return 'Contest ended! Confirming the winner…';
@@ -660,9 +672,9 @@
       return 'Win a free day on 2 bikes!';
     }
 
-    async function fetchLeaderboard() {
+    async function fetchLeaderboard(period = 'alltime') {
       const requestNumber = ++contestRequestNumber;
-      const data = await leaderboardRequest('leaderboard');
+      const data = await leaderboardRequest('leaderboard?period=' + period);
       if (!data?.contest || !['not started', 'open', 'ended'].includes(data.contest.status) || !Array.isArray(data.top10)) {
         throw new Error('The leaderboard response was incomplete. Please try again later.');
       }
@@ -731,7 +743,9 @@
       run.message = 'Submitting your score…';
       renderRunLeaderboard(run);
       try {
-        await leaderboardRequest('submit-score', { token: run.token, score: run.score, nickname, contact });
+        const saved = await leaderboardRequest('submit-score', { token: run.token, score: run.score, nickname, contact });
+        leaderboardIdentity = { id: saved.playerId, nickname, contact };
+        rememberLeaderboardProfile();
         run.message = 'Score saved! Your best score counts.';
         if (leaderboardRun === run && state === 'gameover') openLeaderboard(run.message);
       } catch (error) {
@@ -750,8 +764,11 @@
       const ui = leaderboardUI;
       ui.rows.replaceChildren();
       const nickname = leaderboardUI.nickname.value.normalize('NFKC').trim().replace(/ +/g, ' ').toLowerCase();
-      const matches = data.top10.filter(entry => typeof entry.nickname === 'string' && entry.nickname.toLowerCase() === nickname);
-      ui.ownNote.textContent = matches.length === 1 ? 'Your nickname is highlighted.'
+      const identity = leaderboardIdentity?.id && leaderboardIdentity.nickname.toLowerCase() === nickname
+        && leaderboardIdentity.contact === leaderboardUI.contact.value.normalize('NFKC').trim() ? leaderboardIdentity : null;
+      const matches = data.top10.filter(entry => identity ? entry.playerId === identity.id
+        : typeof entry.nickname === 'string' && entry.nickname.toLowerCase() === nickname);
+      ui.ownNote.textContent = matches.length === 1 ? (identity ? 'Your entry is highlighted.' : 'Your nickname is highlighted. Submit a score to confirm your entry on this device.')
         : matches.length > 1 ? 'More than one rider uses your nickname, so your entry cannot be identified here.' : '';
       for (const entry of data.top10.slice(0, 10)) {
         const row = document.createElement('tr');
@@ -775,18 +792,23 @@
 
     async function refreshLeaderboard(notice = '') {
       const version = ++leaderboardViewVersion;
+      const period = leaderboardPeriod;
+      for (const button of document.querySelectorAll('[data-leaderboard-period]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.leaderboardPeriod === period));
+      }
       const run = leaderboardRun;
       leaderboardUI.status.classList.remove('error');
       leaderboardUI.status.textContent = notice ? notice + ' Loading the Top 10…' : 'Loading the Top 10…';
       leaderboardUI.refresh.disabled = true;
       leaderboardUI.table.classList.add('hidden');
+      leaderboardUI.table.setAttribute('aria-busy', 'true');
       leaderboardUI.ownNote.textContent = '';
       try {
-        const data = await fetchLeaderboard();
+        const data = await fetchLeaderboard(period);
         if (version !== leaderboardViewVersion) return;
         renderLeaderboard(data);
         leaderboardUI.status.textContent = (notice ? notice + ' ' : '')
-          + (data.top10.length === 0 && data.contest.status === 'open' ? 'No scores yet. Be the first!' : '');
+          + (data.top10.length === 0 ? (period === 'daily' ? 'No scores yet today.' : period === 'weekly' ? 'No scores yet this week.' : 'No scores yet.') : '');
         if (run && leaderboardRun === run) {
           ++run.boardVersion;
           run.board = data;
@@ -798,12 +820,16 @@
         leaderboardUI.status.textContent = (notice ? notice + ' ' : '') + error.message;
         leaderboardUI.status.classList.add('error');
       } finally {
-        if (version === leaderboardViewVersion) leaderboardUI.refresh.disabled = false;
+        if (version === leaderboardViewVersion) {
+          leaderboardUI.refresh.disabled = false;
+          leaderboardUI.table.setAttribute('aria-busy', 'false');
+        }
       }
     }
 
     function openLeaderboard(notice = '') {
       if (state === 'playing') return;
+      leaderboardPeriod = 'alltime';
       if (leaderboardUI.screen.classList.contains('hidden')) leaderboardReturnFocus = document.activeElement;
       leaderboardUI.screen.classList.remove('hidden');
       startScreen.inert = true;
@@ -2046,6 +2072,14 @@
     leaderboardUI.play.addEventListener('click', startGame);
     leaderboardUI.close.addEventListener('click', () => closeLeaderboard());
     leaderboardUI.refresh.addEventListener('click', () => { void refreshLeaderboard(); });
+    // Each tab request has a version, so a slow reply cannot replace the newer selection.
+    for (const button of document.querySelectorAll('[data-leaderboard-period]')) {
+      button.addEventListener('click', () => {
+        if (leaderboardPeriod === button.dataset.leaderboardPeriod) return;
+        leaderboardPeriod = button.dataset.leaderboardPeriod;
+        void refreshLeaderboard();
+      });
+    }
     leaderboardUI.form.addEventListener('submit', submitLeaderboardScore);
     leaderboardUI.skip.addEventListener('click', () => {
       const run = leaderboardRun;

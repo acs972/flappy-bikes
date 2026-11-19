@@ -151,7 +151,7 @@
         byId('contest-status').textContent = 'Contest: ' + data.contest.status;
         byId('contest-start').textContent = 'Starts: ' + (data.contest.startIsrael || 'Not set');
         byId('contest-end').textContent = 'Ends: ' + (data.contest.endIsrael || 'Not set');
-        const description = period === 'daily' ? 'Today in Israel' : period === 'weekly' ? 'This Sunday–Saturday week in Israel' : 'All scores in the configured contest';
+        const description = period === 'daily' ? 'Today in Israel' : period === 'weekly' ? 'This Sunday–Saturday week in Israel' : 'Prize board · All scores in the configured contest';
         byId('period-note').textContent = `${description}. Showing ${data.entries.length} of ${data.totalPlayers} players (top 50).`;
         for (const button of document.querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
         rows.replaceChildren();

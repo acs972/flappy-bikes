@@ -1,5 +1,6 @@
 import { ApiError, contest, failure, json, readSubmission, requireMethod, requireOpen, reserveSubmission, secret, storage, validatePlayer, validateScore, verifyRun, visitorHash } from '../lib/leaderboard.js';
 import { minimumRunSeconds } from '../lib/score-timing.js';
+import { publicPlayerId } from '../lib/rankings.js';
 
 export default async function handler(request, context) {
   try {
@@ -35,6 +36,8 @@ export default async function handler(request, context) {
       submittedAt,
     }, { onlyIfNew: true });
     if (!result.modified) throw new ApiError(409, 'This run has already been submitted. Please start a new run.');
-    return json({ message: 'Score saved. Only your best score appears on the leaderboard.', score, submittedAt: new Date(submittedAt).toISOString() }, 201);
+    // Keep every accepted run: each period chooses its own best by submittedAt.
+    // The ranking cache detects this atomic journal write through its storage ETag.
+    return json({ message: 'Score saved. Your best score within each period appears on its leaderboard.', score, playerId: publicPlayerId(player.playerId), submittedAt: new Date(submittedAt).toISOString() }, 201);
   } catch (error) { return failure(error); }
 }
