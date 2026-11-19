@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { ApiError, compareScores } from './leaderboard.js';
+import { ApiError, compareScores, keyedHash } from './leaderboard.js';
 
 const israelDate = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -19,8 +18,8 @@ export function requestedPeriod(request) {
 }
 
 // A one-way identifier lets the browser highlight its player without publishing contact details.
-export function publicPlayerId(playerId) {
-  return createHash('sha256').update(`public-player:${playerId}`).digest('hex');
+export function publicPlayerId(playerId, key) {
+  return keyedHash('public-player', playerId, key);
 }
 
 // Reuse unchanged journal records. The strong listing's ETags detect new scores,

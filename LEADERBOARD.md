@@ -11,8 +11,9 @@ The game calls the public endpoints below. The separate admin page is for the or
 - **GET `/.netlify/functions/leaderboard?period=daily|weekly|alltime`**: returns
   `contest: { status, start, end }` and
   `period`, `winner` (All Time winner when ended, otherwise null), and
-  `top10: [{ rank, nickname, score, playerId }]`. The public player ID is a one-way
-  identifier used for highlighting, not a contact. Status is `not started`, `open`, or
+  `top10: [{ rank, nickname, score, playerId }]`. The public player ID is an
+  HMAC-SHA256 identifier derived with `LEADERBOARD_SECRET` and used for highlighting,
+  not a contact. Status is `not started`, `open`, or
   `ended`. No public endpoint returns contact information.
 
 The default period is `alltime`. Daily means today in Israel; Weekly starts on

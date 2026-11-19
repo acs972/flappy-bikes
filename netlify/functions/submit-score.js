@@ -38,6 +38,6 @@ export default async function handler(request, context) {
     if (!result.modified) throw new ApiError(409, 'This run has already been submitted. Please start a new run.');
     // Keep every accepted run: each period chooses its own best by submittedAt.
     // The ranking cache detects this atomic journal write through its storage ETag.
-    return json({ message: 'Score saved. Your best score within each period appears on its leaderboard.', score, playerId: publicPlayerId(player.playerId), submittedAt: new Date(submittedAt).toISOString() }, 201);
+    return json({ message: 'Score saved. Your best score within each period appears on its leaderboard.', score, playerId: publicPlayerId(player.playerId, key), submittedAt: new Date(submittedAt).toISOString() }, 201);
   } catch (error) { return failure(error); }
 }
