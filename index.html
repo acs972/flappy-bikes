@@ -269,6 +269,9 @@
     .saved-player-line { display: flex; align-items: center; gap: 4px; min-height: 44px; font-size: 13px; }
     .saved-player-line > span { min-width: 0; overflow-wrap: anywhere; }
     .change-player-button { flex: 0 0 auto; border: 0; padding: 8px 4px; min-height: 44px; background: none; color: var(--teal); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+    .contest-rules-link { display: inline-block; margin-top: 5px; color: var(--teal); font-size: 12px; line-height: 1.5; text-underline-offset: 3px; }
+    .contest-countdown { margin: 8px 0; color: var(--teal); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+    .contest-countdown:empty { display: none; }
     .hidden { display: none; }
   </style>
 </head>
@@ -295,13 +298,15 @@
       </div>
     </div>
 
-    <section class="overlay" id="start-screen">
+    <section class="overlay scroll-overlay" id="start-screen">
       <div class="card">
         <h1>Flappy<br>Bikes</h1>
         <p class="subtitle">by Yalla Bikes Tel Aviv</p>
         <div class="prompt">Press Space or tap to start</div>
         <p class="tip">Keep hopping to fly through the city.</p>
+        <p class="contest-countdown" id="start-contest-status" role="status"></p>
         <button class="share-button" id="start-leaderboard-button" type="button" data-game-ui>Leaderboard</button>
+        <a class="contest-rules-link" href="./rules.html" data-game-ui>Contest rules</a>
       </div>
     </section>
 
@@ -331,6 +336,7 @@
               <button class="share-button" id="skip-score-button" type="button">Skip</button>
             </div>
           </form>
+          <a class="contest-rules-link" href="./rules.html" target="_blank" rel="noopener" aria-label="Contest rules (opens in a new tab)">Contest rules</a>
         </section>
         <div class="leaderboard-actions">
           <button class="share-button" id="game-over-leaderboard-button" type="button">Leaderboard</button>
@@ -344,6 +350,7 @@
     <section class="overlay scroll-overlay hidden" id="leaderboard-screen" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title" data-game-ui>
       <div class="card">
         <h2 id="leaderboard-title">Leaderboard</h2>
+        <p class="contest-countdown" id="leaderboard-contest-status" role="status"></p>
         <p class="leaderboard-note" id="leaderboard-status" role="status"></p>
         <table id="leaderboard-table" class="hidden" aria-label="Top 10 riders">
           <thead><tr><th scope="col">Rank</th><th scope="col">Nickname</th><th scope="col">Score</th></tr></thead>
@@ -514,6 +521,57 @@
     let leaderboardViewVersion = 0;
     let leaderboardReturnFocus = null;
     let editingLeaderboardPlayer = false;
+    let contestSnapshot = null;
+    let contestRequestNumber = 0;
+    let latestContestRequest = 0;
+    let contestRefreshPending = false;
+    let contestBoundaryRefreshAt = 0;
+
+    // Countdown text uses endpoint dates; only the server can confirm a winner.
+    function contestTimeLeft(date) {
+      const seconds = Math.max(0, Math.ceil((Date.parse(date) - Date.now()) / 1000));
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor(seconds % 86400 / 3600);
+      if (days || hours) return `${days} days ${hours} hours`;
+      return seconds >= 60 ? `${Math.floor(seconds / 60)} minutes` : `${seconds} seconds`;
+    }
+
+    function contestHasEnded(data) {
+      return data?.contest.status === 'ended' || (!!data?.contest.end && Date.parse(data.contest.end) <= Date.now());
+    }
+
+    // Refresh only menu copy, never the animation loop or gameplay state.
+    function updateContestMessages() {
+      if (!contestSnapshot) return;
+      const message = contestMessage(contestSnapshot);
+      for (const id of ['start-contest-status', 'leaderboard-contest-status']) {
+        const element = document.getElementById(id);
+        if (element.textContent !== message) element.textContent = message;
+      }
+      if (contestHasEnded(contestSnapshot)) leaderboardUI.form.classList.add('hidden');
+      const contest = contestSnapshot.contest;
+      const crossedBoundary = (contest.status === 'not started' && contest.start && Date.parse(contest.start) <= Date.now())
+        || (contest.status === 'open' && contestHasEnded(contestSnapshot));
+      if (crossedBoundary && Date.now() - contestBoundaryRefreshAt > 15000) {
+        contestBoundaryRefreshAt = Date.now();
+        void refreshContestMessages();
+      }
+    }
+
+    async function refreshContestMessages() {
+      if (contestRefreshPending) return;
+      contestRefreshPending = true;
+      try {
+        const data = await fetchLeaderboard();
+        if (leaderboardRun && state === 'gameover') {
+          ++leaderboardRun.boardVersion;
+          leaderboardRun.board = data;
+          renderRunLeaderboard(leaderboardRun);
+        }
+      } catch (_) {
+        if (!contestSnapshot) document.getElementById('start-contest-status').textContent = 'Contest status is unavailable right now.';
+      } finally { contestRefreshPending = false; }
+    }
 
     // Reuse the same form values and submit handler, showing a summary for returning riders.
     function renderLeaderboardPlayer() {
@@ -590,20 +648,28 @@
 
     function contestMessage(data) {
       const window = data.contest;
-      if (window.status === 'not started') {
-        return 'The contest has not started yet.' + (window.start ? ' Starts ' + new Date(window.start).toLocaleString() + '.' : '');
-      }
       if (window.status === 'ended') {
         const winner = data.top10[0];
-        return 'The contest has ended.' + (winner ? ` Winner: ${winner.nickname} · ${winner.score} points (subject to verification).` : ' No scores were submitted.');
+        return winner ? `Contest ended! Winner: ${winner.nickname} with ${winner.score}` : 'Contest ended! No scores were submitted.';
       }
+      if (contestHasEnded(data)) return 'Contest ended! Confirming the winner…';
+      if (window.status === 'not started') {
+        return window.start ? 'Contest starts in ' + contestTimeLeft(window.start) : 'Dates coming soon';
+      }
+      if (window.end) return 'Contest ends in ' + contestTimeLeft(window.end);
       return 'Win a free day on 2 bikes!';
     }
 
     async function fetchLeaderboard() {
+      const requestNumber = ++contestRequestNumber;
       const data = await leaderboardRequest('leaderboard');
       if (!data?.contest || !['not started', 'open', 'ended'].includes(data.contest.status) || !Array.isArray(data.top10)) {
         throw new Error('The leaderboard response was incomplete. Please try again later.');
+      }
+      if (requestNumber > latestContestRequest) {
+        latestContestRequest = requestNumber;
+        contestSnapshot = data;
+        updateContestMessages();
       }
       return data;
     }
@@ -626,7 +692,7 @@
     function renderRunLeaderboard(run) {
       if (leaderboardRun !== run || state !== 'gameover') return;
       const ui = leaderboardUI;
-      const open = run.board?.contest.status === 'open';
+      const open = run.board?.contest.status === 'open' && !contestHasEnded(run.board) && !contestHasEnded(contestSnapshot);
       renderLeaderboardPlayer();
       ui.form.classList.toggle('hidden', !open || run.score < 1 || run.skipped || run.attempted);
       ui.submit.disabled = !run.token || run.tokenPending || run.sending;
@@ -719,8 +785,8 @@
         const data = await fetchLeaderboard();
         if (version !== leaderboardViewVersion) return;
         renderLeaderboard(data);
-        leaderboardUI.status.textContent = (notice ? notice + ' ' : '') + contestMessage(data)
-          + (data.top10.length === 0 && data.contest.status === 'open' ? ' No scores yet. Be the first!' : '');
+        leaderboardUI.status.textContent = (notice ? notice + ' ' : '')
+          + (data.top10.length === 0 && data.contest.status === 'open' ? 'No scores yet. Be the first!' : '');
         if (run && leaderboardRun === run) {
           ++run.boardVersion;
           run.board = data;
@@ -2001,6 +2067,13 @@
     window.visualViewport?.addEventListener('scroll', sizeLeaderboardPanels);
     restoreLeaderboardProfile();
     sizeLeaderboardPanels();
+    void refreshContestMessages();
+    // Local countdowns are cheap; fetch fresh server status once a minute in menus.
+    setInterval(() => { if (!document.hidden && state !== 'playing') updateContestMessages(); }, 1000);
+    setInterval(() => { if (!document.hidden && state !== 'playing') void refreshContestMessages(); }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state !== 'playing') void refreshContestMessages();
+    });
 
     updateMuteButton();
     updateBestScoreDisplay();

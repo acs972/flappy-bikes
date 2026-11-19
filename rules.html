@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Contest rules · Flappy Bikes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Raleway:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { color-scheme: light; font-family: "Raleway", sans-serif; color: #0D303B; background: #CCE3EC; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+    main { width: min(100%, 640px); margin: 16px auto; padding: clamp(18px, 5vw, 36px); border: 5px solid #0D303B; border-radius: 24px; background: white; box-shadow: 0 9px 0 #0d303b33; }
+    h1, h2 { font-family: "Poppins", sans-serif; line-height: 1.25; }
+    h1 { margin: 20px 0 8px; font-size: clamp(28px, 8vw, 40px); }
+    h2 { font-size: 19px; margin: 0 0 8px; }
+    p { margin: 0; font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+    section { margin-top: 24px; }
+    .byline { color: #1A6175; font-weight: 700; }
+    a { color: #1A6175; text-underline-offset: 3px; }
+    .back { display: inline-block; min-height: 44px; padding: 11px 16px; border-radius: 12px; background: #FF9D3F; color: #0D303B; font-weight: 700; text-decoration: none; }
+    a:focus-visible { outline: 3px solid #1A6175; outline-offset: 4px; }
+    footer { margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="./index.html">Back to game</a>
+    <h1>Contest rules</h1>
+    <p class="byline">Flappy Bikes · Yalla Bikes Tel Aviv</p>
+
+    <!-- Editable contest copy. Contact deletion is an organizer task, not automated here. -->
+    <section aria-labelledby="eligibility-heading">
+      <h2 id="eligibility-heading">Who can enter</h2>
+      <p>Ages 16 and over. Anyone who can collect the prize in Tel Aviv can enter.</p>
+    </section>
+    <section aria-labelledby="dates-heading">
+      <h2 id="dates-heading">Contest dates</h2>
+      <p id="contest-dates" role="status">Dates coming soon</p>
+    </section>
+    <section aria-labelledby="prize-heading">
+      <h2 id="prize-heading">Prize</h2>
+      <p>One free day rental of 2 bikes from Yalla Bikes Tel Aviv, to be used within 60 days. The prize is not exchangeable for cash.</p>
+    </section>
+    <section aria-labelledby="winner-heading">
+      <h2 id="winner-heading">How the winner is chosen</h2>
+      <p>The highest All Time score during the contest wins. Ties go to whoever reached that score first.</p>
+    </section>
+    <section aria-labelledby="fair-play-heading">
+      <h2 id="fair-play-heading">Fair play</h2>
+      <p>Yalla Bikes may verify the winning score, including a short supervised play session at the shop, and disqualify suspicious or cheating entries.</p>
+    </section>
+    <section aria-labelledby="privacy-heading">
+      <h2 id="privacy-heading">Privacy</h2>
+      <p>Contact information is used only to reach the winner and is deleted after the contest.</p>
+    </section>
+    <section aria-labelledby="contact-heading">
+      <h2 id="contact-heading">How we contact the winner</h2>
+      <p>We will contact the winner by Instagram DM or phone within 3 days of the contest ending.</p>
+    </section>
+    <footer><a class="back" href="./index.html">Back to game</a></footer>
+  </main>
+  <script>
+    // Israel's timezone automatically accounts for daylight saving time.
+    async function loadContestDates() {
+      const output = document.getElementById('contest-dates');
+      if (!/^https?:$/.test(location.protocol)) return;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch('/.netlify/functions/leaderboard', { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Dates unavailable');
+        const data = await response.json();
+        if (!data?.contest) throw new Error('Dates unavailable');
+        const { start, end } = data.contest;
+        if (!start && !end) { output.textContent = 'Dates coming soon'; return; }
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'long', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+        });
+        const format = value => value ? formatter.format(new Date(value)) : 'Dates coming soon';
+        output.textContent = `Start: ${format(start)}. End: ${format(end)}. All dates are in Israel time.`;
+      } catch (_) {
+        output.textContent = 'Contest dates are temporarily unavailable. Please check again later.';
+      } finally { clearTimeout(timeout); }
+    }
+    void loadContestDates();
+  </script>
+</body>
+</html>

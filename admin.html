@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Contest admin · Yalla Bikes</title>
+  <style>
+    :root { color-scheme: light; font-family: "Raleway", system-ui, sans-serif; color: #0D303B; background: #CCE3EC; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+    main { max-width: 1040px; margin: 12px auto; padding: clamp(16px, 4vw, 28px); border: 5px solid #0D303B; border-radius: 24px; background: white; box-shadow: 0 9px 0 #0d303b33; }
+    h1, h2, button { font-family: "Poppins", system-ui, sans-serif; }
+    h1 { font-size: clamp(25px, 6vw, 36px); line-height: 1.2; margin: 0 0 8px; }
+    h2 { font-size: 19px; }
+    p { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+    label { display: block; font-weight: 700; margin-top: 16px; }
+    input { width: 100%; max-width: 420px; min-height: 46px; margin: 8px 0; padding: 10px; border: 2px solid #1A6175; border-radius: 10px; font: inherit; font-size: 16px; }
+    button { min-height: 44px; padding: 10px 14px; border: 2px solid #1A6175; border-radius: 10px; background: white; color: #1A6175; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    .primary { background: #1A6175; color: white; }
+    .winner { width: 100%; margin: 14px 0; background: #FF9D3F; color: #0D303B; border-color: #d47925; font-size: 17px; }
+    .danger { color: #a12727; border-color: #a12727; }
+    #reset { margin-top: 20px; background: #a12727; color: white; }
+    .actions, .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .tabs button { flex: 1; }
+    .tabs button[aria-pressed="true"] { background: #1A6175; color: white; }
+    .status { color: #1A6175; min-height: 22px; }
+    .error { color: #a12727; }
+    .dates { padding: 12px; border-radius: 12px; background: #edf6f8; }
+    .dates p { margin: 4px 0; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid #CCE3EC; text-align: left; overflow-wrap: anywhere; }
+    td.contact { word-break: break-word; }
+    td:first-child { font-weight: 700; }
+    th { color: #1A6175; }
+    :focus-visible { outline: 3px solid #FF9D3F; outline-offset: 3px; }
+    .hidden { display: none !important; }
+    @media (max-width: 620px) {
+      table, tbody { display: block; }
+      thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+      tr { display: block; margin-bottom: 12px; border: 2px solid #CCE3EC; border-radius: 12px; padding: 6px; }
+      td { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; padding: 8px; border: 0; }
+      td::before { content: attr(data-label); font-weight: 700; color: #1A6175; }
+      td > * { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Contest admin</h1>
+    <p>Yalla Bikes Tel Aviv · Private leaderboard management</p>
+    <form id="login" method="post" autocomplete="off">
+      <label for="password">Admin password</label>
+      <input id="password" type="password" required autocomplete="off" autocapitalize="none" spellcheck="false" />
+      <div><button class="primary" type="submit" id="login-button">Sign in</button></div>
+      <p>Your password stays in memory in this tab. Reloading or signing out clears it.</p>
+    </form>
+    <p id="message" class="status" role="status" aria-live="polite"></p>
+    <section id="dashboard" class="hidden" aria-label="Private contest dashboard">
+      <div class="dates">
+        <p id="contest-status"></p><p id="contest-start"></p><p id="contest-end"></p>
+      </div>
+      <div class="actions">
+        <button id="refresh" type="button">Refresh</button>
+        <button id="logout" type="button">Sign out</button>
+      </div>
+      <div class="tabs" role="group" aria-label="Ranking period">
+        <button type="button" data-period="daily" aria-pressed="false">Daily</button>
+        <button type="button" data-period="weekly" aria-pressed="false">Weekly</button>
+        <button type="button" data-period="alltime" aria-pressed="true">All Time</button>
+      </div>
+      <p id="period-note"></p>
+      <button id="copy-winner" class="winner" type="button" disabled>Copy winner details · #1 All Time</button>
+      <div class="table-wrap">
+        <table aria-label="Private leaderboard entries">
+          <thead><tr><th scope="col">Rank</th><th scope="col">Nickname</th><th scope="col">Score</th><th scope="col">Contact</th><th scope="col">Submitted (Israel)</th><th scope="col">Action</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <button id="reset" class="danger" type="button">Reset leaderboard</button>
+      <p>Reset permanently removes scores and used tokens from every contest on this site. Close submissions and rotate LEADERBOARD_SECRET before resetting; otherwise ongoing runs or old tokens can add scores again.</p>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const byId = id => document.getElementById(id);
+      const login = byId('login'), passwordBox = byId('password'), dashboard = byId('dashboard');
+      const message = byId('message'), rows = byId('rows'), copyButton = byId('copy-winner');
+      // Never persist credentials, entries, or contacts in browser storage or URLs.
+      let password = '', period = 'alltime', winner = null, busy = false, session = 0;
+      const controllers = new Set();
+
+      function say(text, error = false) {
+        message.textContent = text;
+        message.classList.toggle('error', error);
+      }
+
+      function setBusy(value) {
+        busy = value;
+        for (const button of document.querySelectorAll('button')) button.disabled = value;
+        byId('logout').disabled = false;
+        copyButton.disabled = value || period !== 'alltime' || !winner;
+      }
+
+      function signOut() {
+        ++session;
+        password = '';
+        passwordBox.value = '';
+        winner = null;
+        for (const controller of controllers) controller.abort();
+        controllers.clear();
+        rows.replaceChildren();
+        for (const id of ['contest-status', 'contest-start', 'contest-end', 'period-note']) byId(id).textContent = '';
+        dashboard.classList.add('hidden');
+        login.classList.remove('hidden');
+        setBusy(false);
+        say('');
+      }
+
+      async function api(body) {
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+          throw new Error('Open the deployed HTTPS admin page or use Netlify Dev locally.');
+        }
+        const controller = new AbortController();
+        controllers.add(controller);
+        const timer = setTimeout(() => controller.abort(), 25000);
+        try {
+          const response = await fetch('/.netlify/functions/admin' + (body ? '' : '?period=' + period), {
+            method: body ? 'POST' : 'GET', cache: 'no-store', credentials: 'omit',
+            redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal,
+            headers: { Authorization: 'Bearer ' + password, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+            ...(body ? { body: JSON.stringify(body) } : {}),
+          });
+          let data;
+          try { data = await response.json(); } catch { throw new Error('The admin service returned an unreadable response.'); }
+          if (!response.ok) {
+            const error = new Error(data.error || 'The admin request failed.');
+            error.status = response.status;
+            const retry = Number(response.headers.get('Retry-After'));
+            if (response.status === 429 && retry > 0) error.message += ` Try again in ${Math.ceil(retry / 60)} minutes.`;
+            throw error;
+          }
+          return data;
+        } finally { clearTimeout(timer); controllers.delete(controller); }
+      }
+
+      function render(data) {
+        byId('contest-status').textContent = 'Contest: ' + data.contest.status;
+        byId('contest-start').textContent = 'Starts: ' + (data.contest.startIsrael || 'Not set');
+        byId('contest-end').textContent = 'Ends: ' + (data.contest.endIsrael || 'Not set');
+        const description = period === 'daily' ? 'Today in Israel' : period === 'weekly' ? 'This Sunday–Saturday week in Israel' : 'All scores in the configured contest';
+        byId('period-note').textContent = `${description}. Showing ${data.entries.length} of ${data.totalPlayers} players (top 50).`;
+        for (const button of document.querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
+        rows.replaceChildren();
+        for (const entry of data.entries) {
+          const row = document.createElement('tr');
+          for (const [label, value] of [['Rank', entry.rank], ['Nickname', entry.nickname], ['Score', entry.score], ['Contact', entry.contact], ['Submitted', entry.submittedAtIsrael]]) {
+            const cell = document.createElement('td');
+            cell.dataset.label = label;
+            if (label === 'Contact') cell.className = 'contact';
+            const text = document.createElement('bdi');
+            text.textContent = value;
+            cell.append(text);
+            row.append(cell);
+          }
+          const action = document.createElement('td');
+          action.dataset.label = 'Action';
+          const button = document.createElement('button');
+          button.type = 'button'; button.className = 'danger'; button.textContent = 'Delete';
+          button.setAttribute('aria-label', 'Delete entry for ' + entry.nickname);
+          button.addEventListener('click', () => {
+            if (busy || !confirm(`Delete the score ${entry.score} for ${entry.nickname}? A lower score from this player may appear afterwards.`)) return;
+            void mutate({ action: 'delete', id: entry.id });
+          });
+          action.append(button); row.append(action); rows.append(row);
+        }
+        winner = period === 'alltime' ? data.entries[0] || null : null;
+        copyButton.classList.toggle('hidden', period !== 'alltime');
+        login.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+      }
+
+      function report(error) {
+        if ([401, 429].includes(error.status)) signOut();
+        const text = error.name === 'AbortError' || error instanceof TypeError
+          ? 'Connection interrupted. Refresh to check the current data before repeating a delete or reset.' : error.message;
+        say(text, true);
+      }
+
+      async function load() {
+        if (busy) return;
+        const currentSession = session;
+        winner = null;
+        rows.replaceChildren();
+        byId('period-note').textContent = 'Loading the selected period…';
+        setBusy(true); say('Loading private leaderboard…');
+        try {
+          const data = await api();
+          if (session !== currentSession) return;
+          render(data); say(data.entries.length ? 'Private data loaded.' : 'No entries in this period.');
+        } catch (error) { if (session === currentSession) report(error); }
+        finally { if (session === currentSession) setBusy(false); }
+      }
+
+      async function mutate(body) {
+        if (busy) return;
+        const currentSession = session;
+        winner = null;
+        rows.replaceChildren();
+        byId('period-note').textContent = 'Refresh after the action to see current entries.';
+        setBusy(true); say('Saving changes…');
+        try {
+          const result = await api(body);
+          if (session !== currentSession) return;
+          // Clear old contacts immediately after a successful destructive action.
+          rows.replaceChildren(); winner = null;
+          const data = await api();
+          if (session !== currentSession) return;
+          render(data); say(result.message);
+        } catch (error) { if (session === currentSession) report(error); }
+        finally { if (session === currentSession) setBusy(false); }
+      }
+
+      login.addEventListener('submit', event => {
+        event.preventDefault();
+        if (busy) return;
+        password = passwordBox.value;
+        passwordBox.value = '';
+        ++session;
+        void load();
+      });
+      byId('logout').addEventListener('click', () => { signOut(); passwordBox.focus(); });
+      byId('refresh').addEventListener('click', () => { void load(); });
+      for (const button of document.querySelectorAll('[data-period]')) button.addEventListener('click', () => {
+        if (busy) return;
+        period = button.dataset.period;
+        void load();
+      });
+      byId('reset').addEventListener('click', () => {
+        if (busy) return;
+        const confirmation = prompt('Permanently remove ALL scores and used tokens on this site? Close submissions and rotate LEADERBOARD_SECRET first. Type RESET to confirm.');
+        if (confirmation === 'RESET') void mutate({ action: 'reset', confirm: confirmation });
+        else if (confirmation !== null) say('Reset cancelled: confirmation must be exactly RESET.', true);
+      });
+      copyButton.addEventListener('click', async () => {
+        if (busy || period !== 'alltime' || !winner) return;
+        const currentSession = session;
+        const text = `Yalla Bikes — #1 All Time\nNickname: ${winner.nickname}\nScore: ${winner.score}\nContact: ${winner.contact}\nSubmitted (Israel): ${winner.submittedAtIsrael}`;
+        try {
+          await navigator.clipboard.writeText(text);
+          if (session === currentSession) say('Winner details copied. Keep this contact information private.');
+        } catch { if (session === currentSession) say('Clipboard access was blocked. Copy the winner row manually.', true); }
+      });
+      window.addEventListener('pagehide', signOut);
+    })();
+  </script>
+</body>
+</html>

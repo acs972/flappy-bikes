@@ -1,6 +1,6 @@
 # Flappy Bikes leaderboard
 
-Backend only: the game is unchanged and does not call these endpoints yet.
+The game calls the public endpoints below. The separate admin page is for the organizer only.
 
 ## Endpoints
 
@@ -11,7 +11,7 @@ Backend only: the game is unchanged and does not call these endpoints yet.
 - **GET `/.netlify/functions/leaderboard`**: returns
   `contest: { status, start, end }` and
   `top10: [{ rank, nickname, score }]`. Status is `not started`, `open`, or
-  `ended`. No endpoint returns contact information.
+  `ended`. No public endpoint returns contact information.
 
 Each nickname/contact pair gets one leaderboard entry: its best score.
 Ties go to the earliest server submission. Letter case, Instagram's `@`,
@@ -25,6 +25,7 @@ Open **Project configuration → Environment variables** and set these with
 | Variable | What to enter |
 | --- | --- |
 | `LEADERBOARD_SECRET` | Required: at least 32 random characters. Use the generator below. |
+| `ADMIN_PASSWORD` | A separate long random password for the private admin page. Set it with Functions scope; never put it in HTML or Git. |
 | `CONTEST_START` | Optional ISO time, e.g. `2026-12-01T09:00:00+02:00`. |
 | `CONTEST_END` | Optional ISO time, e.g. `2026-12-08T18:00:00+02:00`. |
 
@@ -87,8 +88,8 @@ also need a separate process.
 3. Set the environment variables and redeploy. Check the endpoints on a separate
    test site first. For local work use Netlify Dev; opening HTML directly cannot
    run the backend.
-4. Next, connect the game to run start, score submission, and leaderboard display.
-   Render nicknames as text and explain why contact details are collected.
+4. The game already connects run start, score submission, and leaderboard display.
+   Check the deployed game before opening the contest.
 5. Choose the winning-run verification process before launching the prize contest.
 
 Errors are JSON `{ "error": "friendly explanation" }`: 400/413/415 for input,
@@ -98,3 +99,70 @@ Errors are JSON `{ "error": "friendly explanation" }`: 400/413/415 for input,
 
 References: [Netlify Functions](https://docs.netlify.com/build/functions/api/)
 and [Netlify Blobs](https://docs.netlify.com/build/data-and-storage/netlify-blobs/).
+
+## Private admin page
+
+1. Set `ADMIN_PASSWORD` in Netlify's environment variables (Functions scope),
+   using a different random password from `LEADERBOARD_SECRET`, then redeploy.
+   Login IP hashes use the admin password as their HMAC key, separately from run signing.
+2. Open `https://YOUR-SITE.netlify.app/admin.html` directly. It is not linked in
+   the game and has `noindex`. The HTML login screen is public; the password
+   protects every data request and action. Use HTTPS.
+3. Sign in. The password stays only in memory for that tab and is sent in the
+   `Authorization: Bearer <password>` header. It is never put in URLs, browser
+   storage, logs, or responses. Reload, leave the page, or Sign out to clear it.
+4. Select Daily, Weekly, or All Time. Each shows up to 50 players, with each
+   nickname/contact pair's best score **within that period**. Daily means today
+   in Israel; Weekly means the current Sunday–Saturday week in Israel; All Time
+   means all scores for the currently configured contest. Submission times and
+   contest dates use `Asia/Jerusalem`, including daylight saving time.
+5. Use **Copy winner details** on All Time to copy #1's nickname, score, contact,
+   and submission time. It copies personal information to your clipboard, so
+   keep it private. Verify the winner before awarding the prize.
+
+Missing/wrong passwords return 401. After 5 failures from the same hashed IP in
+a rolling 15-minute window, requests return 429 with `Retry-After`, including
+correct-password requests until the window frees up. Shared Wi-Fi shares this
+limit. Failed attempts store timestamps and an HMAC IP hash, never raw IPs or
+passwords. Storage failures deny access instead of bypassing the limit.
+
+### Delete one entry
+
+Click Delete and confirm. This deletes that accepted run's score and contact;
+a null marker retains its used-token protection. Public endpoints ignore that
+marker. A player's lower score can then reappear: this deletes one entry, not
+every run by that person, and does not ban them from submitting future runs.
+
+### Reset for a fresh contest
+
+Reset permanently deletes **all** score and used-run records, including old
+contest groups and deletion markers. It preserves visitor rate limits and admin
+login lockouts. It does not change contest dates or environment variables.
+
+Before resetting, close submissions with the contest dates, rotate
+`LEADERBOARD_SECRET`, and redeploy. Allow any in-flight submissions to finish.
+Then click the red Reset leaderboard button and type exactly `RESET`. Set the
+new contest dates and redeploy when ready to reopen it. Password-protected admin
+access continues to work while the contest is closed.
+
+This storage reset is not a transaction with public submissions, and public
+endpoint logic is unchanged. Without closing submissions and changing the
+signing secret, ongoing runs or still-valid old tokens can add scores again.
+A failed reset may be partial; refresh and repeat it after resolving the error.
+Do not reset a live contest or assume a site redeploy backs up Blobs.
+
+### Admin API (for reference)
+
+Every request requires `Authorization: Bearer <password>`. Do not paste actual
+passwords into URLs or shared command histories.
+
+- `GET /.netlify/functions/admin?period=daily|weekly|alltime` returns `contest`,
+  `period`, `timezone`, `totalPlayers`, and `entries`. Entries include `id`,
+  `rank`, `nickname`, `score`, `contact`, `submittedAt` (ISO), and
+  `submittedAtIsrael` (readable Israel time). Default period: `alltime`.
+- `POST /.netlify/functions/admin` with JSON `{ "action": "delete", "id": "ENTRY_ID" }`.
+- `POST /.netlify/functions/admin` with JSON `{ "action": "reset", "confirm": "RESET" }`.
+
+Admin responses use `Cache-Control: no-store`. Contacts are only returned by this
+authenticated endpoint; the public API has not changed. Use a separate Netlify
+site for testing because previews of the same site share production Blobs.
